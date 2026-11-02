@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+build/
+dist/
+qa/
+buildcache/
+vendor/
+.venv/
+qa-setup.log

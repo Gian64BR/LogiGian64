@@ -78,9 +78,8 @@ class HardwareArt(DeviceArt):
     def source_rect(self):
         from .keyboard_support import is_kumara
         if is_kumara(self.device) and not self.picture.isNull():
-            # Render the body area of the original 1500x1500 photograph, like
-            # object-fit in a view. The distributed photograph is unmodified.
-            return QRectF(52, 365, 1396, 498)
+            # Frame the original photograph in the view without editing it.
+            return QRectF(52, 78 if self.picture.height() < 1000 else 365, 1396, 498)
         return QRectF(self.picture.rect())
 
     def fitted_rect(self):
@@ -300,6 +299,8 @@ class MacroLibrary(QListWidget):
 
 
 class AssignmentCanvas(QWidget):
+    target_context = Signal(str)
+    selection_changed = Signal(str)
     target = Signal(str, str)
 
     def __init__(self):
@@ -310,6 +311,7 @@ class AssignmentCanvas(QWidget):
         self.side = False
         self.names = {}
         self.disabled = set()
+        self.paused = set()
         self.label_rects = {}
         self.points = {}
         self.selected = ""
@@ -404,10 +406,17 @@ class AssignmentCanvas(QWidget):
         return distances[0][1] if distances and distances[0][0] < 22 else ""
 
     def mousePressEvent(self, event):
+        if event.button() not in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton):
+            return
         slot = self.slot_at(event.position())
         if slot:
             self.selected = slot
-            self.target.emit(slot, "")
+            self.overlay.update()
+            self.selection_changed.emit(slot)
+            if event.button() == Qt.MouseButton.RightButton:
+                self.target_context.emit(slot)
+            else:
+                self.target.emit(slot, "")
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasFormat("application/x-nexus-macro"):
@@ -449,13 +458,14 @@ class TargetsOverlay(QWidget):
                 self.canvas.label_rects[slot] = rect
                 assigned = slot in self.canvas.names
                 selected = slot == self.canvas.selected
-                p.setPen(QPen(QColor('#00c6ed' if assigned or selected else '#cccccc'), 1.5))
-                p.setBrush(QColor('#004657' if assigned or selected else '#171719'))
+                paused = slot in self.canvas.paused
+                p.setPen(QPen(QColor('#888888' if paused else '#00c6ed' if assigned or selected else '#cccccc'), 1.5))
+                p.setBrush(QColor('#292929' if paused else '#004657' if assigned or selected else '#171719'))
                 p.drawRoundedRect(rect, 3, 3)
                 p.setPen(QColor('white'))
                 p.drawText(rect, Qt.AlignmentFlag.AlignCenter, slot)
             slot = self.canvas.selected
-            text = f"{slot} · {self.canvas.names.get(slot, 'Función original') }" if slot else 'SOLO F1–F12 · Selecciona una tecla o arrastra una macro'
+            text = f"{slot} · {self.canvas.names.get(slot, 'Función original')}" + (' · MACRO DESACTIVADA' if slot in self.canvas.paused else '') if slot else 'SOLO F1–F12 · Selecciona una tecla o arrastra una macro'
             p.setPen(QColor('#00c6ed'))
             p.drawText(QRectF(15, art.top() - 55, self.width() - 30, 45), Qt.AlignmentFlag.AlignCenter, text)
             p.end()

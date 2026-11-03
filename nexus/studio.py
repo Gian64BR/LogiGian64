@@ -191,7 +191,11 @@ class StudioWindow(MainWindow):
             current = next((d for d in self.devices if d.id == self.device.id), None)
             self.connection_label.setText("● CONECTADO" if current else "○ DESCONECTADO")
             if current:
+                renamed = self.device.name != current.name
                 self.device = current
+                self.device_title.setText(current.name)
+                if renamed:
+                    self.canvas.configure(current, self.canvas.names)
             else:
                 self.stop_all()
                 if self.g502:
@@ -245,7 +249,12 @@ class StudioWindow(MainWindow):
         left.addWidget(self.assign_library, 1)
         self.binding_list = QListWidget()
         self.binding_list.setMaximumHeight(125)
+        self.binding_list.currentRowChanged.connect(self.binding_row_selected)
         left.addWidget(self.binding_list)
+        self.keyboard_macro_button = button('DESACTIVAR MACRO', self.toggle_selected_keyboard_macro)
+        self.keyboard_macro_button.hide()
+        self.keyboard_macro_button.setEnabled(False)
+        left.addWidget(self.keyboard_macro_button)
         left.addWidget(button("QUITAR ASIGNACIÓN", self.remove_binding))
         self.binding_hint = label("", "muted", True)
         left.addWidget(self.binding_hint)
@@ -259,6 +268,8 @@ class StudioWindow(MainWindow):
         av = QVBoxLayout(assignments)
         self.canvas = AssignmentCanvas()
         self.canvas.target.connect(self.assign_target)
+        self.canvas.target_context.connect(self.assign_target)
+        self.canvas.selection_changed.connect(self.keyboard_target_selected)
         self.hero_art = self.canvas  # Base class color update; canvas remains the source of targets.
         self.hero_art.color = "#00b7ed"
         av.addWidget(self.canvas, 1)
@@ -430,6 +441,7 @@ class StudioWindow(MainWindow):
         self.direct_button.setVisible((device.vid, device.pid) == ("046D", "C08B"))
         self.front_view_button.setVisible(device.kind != 'keyboard')
         self.side_view_button.setVisible(device.kind != 'keyboard')
+        self.keyboard_macro_button.setVisible(device.kind == 'keyboard')
         self.device_notice.setText('Solo F1–F12 pueden activar macros. Las demás teclas no se reasignan. La función original de Windows también permanece activa.' if device.kind == 'keyboard' else
             'G502: cierra G HUB y su agente antes de activar el control directo. Los cambios del ratón son temporales.' if (device.vid, device.pid) == ('046D', 'C08B') else
             'Los botones genéricos conservan su acción original al ejecutar una macro.')
@@ -457,10 +469,14 @@ class StudioWindow(MainWindow):
         form.addRow('Fabricante', maker)
         form.addRow('Modelo', model)
         layout.addLayout(form)
+        remember = QCheckBox('Recordar el modelo en otros puertos de este equipo')
+        remember.setChecked(True)
+        remember.setToolTip('Se reutiliza solo si hay una única unidad coincidente y ningún modelo ambiguo.')
+        layout.addWidget(remember)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         def save():
             try:
-                save_identity(self.device, maker.text(), model.text())
+                save_identity(self.device, maker.text(), model.text(), remember_ports=remember.isChecked())
             except (OSError, ValueError) as error:
                 self.error(str(error))
                 return
@@ -486,6 +502,7 @@ class StudioWindow(MainWindow):
         if not hasattr(self, "assign_library"):
             return
         self.assign_library.clear()
+        self.binding_list.blockSignals(True)
         self.binding_list.clear()
         names = {}
         for macro in self.store.active["macros"]:
@@ -503,15 +520,87 @@ class StudioWindow(MainWindow):
                 control = ("Control " + str(trigger["button"] + 1) if trigger["type"] == "gbutton" else
                            win.key_name(trigger["vk"]) if trigger["type"] == "key" else win.MOUSE_LABELS[trigger["button"]])
                 slot = binding.get("slot") or control
-                self.binding_list.addItem(slot + " → " + macro["name"])
+                paused = self.device.kind == 'keyboard' and not binding.get('enabled', True)
+                self.binding_list.addItem(slot + " → " + macro["name"] + (' · DESACTIVADA' if paused else ''))
+                self.binding_list.item(self.binding_list.count() - 1).setData(Qt.ItemDataRole.UserRole, slot)
                 names[slot] = macro["name"]
             self.canvas.disabled = {c["slot"] for c in self.store.active.get("disabled_controls", [])
                                     if c["device_id"] == self.device.id}
             self.canvas.names = names
+            self.canvas.paused = {b.get('slot') for b in self.store.active['bindings']
+                                  if b['device_id'] == self.device.id and not b.get('enabled', True)}
             self.canvas.overlay.update()
             self.binding_hint.setText("Pulsa un objetivo para asignar una macro." if not names else "Asignaciones guardadas en este perfil.")
         self.filter_library(self.search_macros.text())
+        self.binding_list.blockSignals(False)
+        self.update_keyboard_macro_action()
         self.sync_g502()
+
+    def keyboard_macro_binding(self, slot):
+        from .keyboard_support import FUNCTION_KEYS
+        if not self.device or self.device.kind != 'keyboard' or slot not in FUNCTION_KEYS:
+            return None
+        return next((b for b in self.store.active['bindings'] if b['device_id'] == self.device.id
+                     and b['trigger'].get('type') == 'key' and b['trigger'].get('vk') == FUNCTION_KEYS[slot]), None)
+
+    def keyboard_target_selected(self, slot):
+        if self.device and self.device.kind == 'keyboard':
+            self.canvas.selected = slot
+            self.canvas.overlay.update()
+            self.update_keyboard_macro_action()
+
+    def binding_row_selected(self, row):
+        item = self.binding_list.item(row)
+        if item:
+            self.keyboard_target_selected(item.data(Qt.ItemDataRole.UserRole))
+
+    def update_keyboard_macro_action(self):
+        if not hasattr(self, 'keyboard_macro_button'):
+            return
+        binding = self.keyboard_macro_binding(self.canvas.selected)
+        self.keyboard_macro_button.setEnabled(binding is not None)
+        self.keyboard_macro_button.setText('ACTIVAR MACRO' if binding and not binding.get('enabled', True) else 'DESACTIVAR MACRO')
+        if binding:
+            state = 'activa' if binding.get('enabled', True) else 'desactivada'
+            self.binding_hint.setText(f'{self.canvas.selected}: macro {state}. La tecla conserva su función original.')
+
+    def set_keyboard_macro_enabled(self, slot, enabled):
+        from .keyboard_support import FUNCTION_KEYS
+        binding = self.keyboard_macro_binding(slot)
+        if not binding:
+            self.status('Selecciona una F1–F12 que tenga una macro asignada.')
+            return
+        previous = binding.get('enabled', True)
+        if not enabled:
+            self.player.stop_owner((self.device.id, 'key', FUNCTION_KEYS[slot], None))
+        binding['enabled'] = bool(enabled)
+        if not self.persist():
+            binding['enabled'] = previous
+        self.refresh_bindings()
+        self.status(f'{slot}: macro ' + ('activada' if binding['enabled'] else 'desactivada') + '. La tecla mantiene su función original.')
+
+    def toggle_selected_keyboard_macro(self):
+        binding = self.keyboard_macro_binding(self.canvas.selected)
+        if binding:
+            self.set_keyboard_macro_enabled(self.canvas.selected, not binding.get('enabled', True))
+
+    def keyboard_target_menu(self, slot):
+        self.keyboard_target_selected(slot)
+        binding = self.keyboard_macro_binding(slot)
+        menu = QMenu(self)
+        assign = menu.addAction('Asignar macro…')
+        toggle = menu.addAction('Activar macro' if binding and not binding.get('enabled', True) else 'Desactivar macro')
+        toggle.setEnabled(binding is not None)
+        menu.addSeparator()
+        remove = menu.addAction('Quitar asignación')
+        remove.setEnabled(binding is not None)
+        action = menu.exec(QCursor.pos())
+        if action == toggle and binding:
+            self.set_keyboard_macro_enabled(slot, not binding.get('enabled', True))
+        elif action == remove and binding:
+            self.set_control_state(slot, False)
+        elif action == assign:
+            self.assign_macro_target(slot)
 
     def filter_library(self, text):
         if not hasattr(self, "assign_library"):
@@ -748,6 +837,8 @@ class StudioWindow(MainWindow):
         if self.device and self.device.kind == 'keyboard' and slot not in FUNCTION_KEYS:
             self.status('Solo F1–F12 admiten asignación de macros.')
             return
+        if self.device and self.device.kind == 'keyboard' and not macro_id:
+            return self.keyboard_target_menu(slot)
         from .safety import PROTECTED_SLOTS
         if slot in PROTECTED_SLOTS:
             self.status("Clic izquierdo y derecho protegidos: no admiten macros ni desactivación.")
@@ -774,6 +865,8 @@ class StudioWindow(MainWindow):
         if self.device and self.device.kind == 'keyboard' and slot not in FUNCTION_KEYS:
             self.status('Solo F1–F12 admiten asignación de macros.')
             return
+        if self.device and self.device.kind == 'keyboard':
+            self.keyboard_target_selected(slot)
         from .safety import PROTECTED_SLOTS
         if slot in PROTECTED_SLOTS:
             self.status("Clic izquierdo y derecho protegidos: no admiten macros.")

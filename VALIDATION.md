@@ -138,3 +138,18 @@ slot, y que todos los mapas enviados por el controlador conservan [1,2].
   letras/objetivos genéricos y desactivaciones del teclado. Grabación de F8 y
   emergencia Ctrl+Alt+F12 conservadas. Las acciones grabadas no se restringen.
 - No hay supresión nativa de teclas; sus acciones de Windows permanecen activas.
+
+## Desactivación, foto y nombre 0.2.8
+
+- 79 pruebas aprobadas. Clic derecho Qt sobre el objetivo F6 desactiva y reactiva
+  desde el menú; el botón lateral hace lo mismo y persiste el estado. La macro
+  y sus pasos permanecen guardados.
+- Se comprobó que una macro desactivada no reproduce entradas; al reactivar vuelve
+  a ejecutarse. Desactivar una tecla diferente no cancela la macro en ejecución;
+  desactivar su propia tecla libera las salidas mantenidas. Emisores controlados.
+- Identificación recordada: cambio de puerto con una única unidad compatible;
+  rechazo de reutilización si hay dos unidades, modelos ambiguos o preferencia
+  de recuerdo desactivada. No se altera el ID de las asignaciones.
+- Foto aportada actualizada: 1500x607, archivo conservado byte por byte; encuadre
+  de cuerpo (52,78,1396,498) y mismos centros F1–F12. Revisión visual en ventana
+  normal y maximizada. Nombre local confirmado Redragon K552RGB-1.

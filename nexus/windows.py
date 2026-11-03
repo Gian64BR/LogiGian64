@@ -225,7 +225,7 @@ class Device:
 
 
 def enumerate_devices(include_virtual=False) -> list[Device]:
-    from .device_identity import load_identities, apply_identity
+    from .device_identity import load_identities, resolve_identities
     # Retry the documented enumeration race when a device arrives during the call.
     for _ in range(4):
         count = U32()
@@ -276,8 +276,7 @@ def enumerate_devices(include_virtual=False) -> list[Device]:
             device.handles.append(int(item.handle))
             if kind == "mouse":
                 device.kind, device.name = kind, name
-    for device in devices.values():
-        apply_identity(device, identities)
+    resolve_identities(list(devices.values()), identities)
     return sorted(devices.values(), key=lambda d: (d.kind != "mouse", d.name.casefold(), d.id))
 
 

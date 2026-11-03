@@ -74,6 +74,15 @@ class MacroEngine:
                 if session and session.owner == owner:
                     session.release()
 
+    def stop_owner(self, owner):
+        with self.condition:
+            if self.current and self.current.owner == owner:
+                self.current.stop()
+            if self.pending and self.pending.owner == owner:
+                self.pending.stop()
+                self.pending = None
+            self.condition.notify_all()
+
     def start(self, events, repeats=1, start_delay=0):
         """Manual preview is always finite; physical activation uses press/release."""
         events = validate_events(copy.deepcopy(events))

@@ -7,5 +7,6 @@ def function_key(vk):
 
 
 def is_kumara(device):
-    name = device.name.casefold()
-    return device.kind == 'keyboard' and 'redragon' in name and 'kumara' in name and 'k552rgb-1' in name
+    import re
+    name = re.sub(r'[^a-z0-9]', '', device.name.casefold())
+    return device.kind == 'keyboard' and ('redragon' in name or 'reddragon' in name) and 'k552rgb1' in name

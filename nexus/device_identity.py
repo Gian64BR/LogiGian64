@@ -32,7 +32,28 @@ def apply_identity(device, identities):
     device.identification = 'Modelo confirmado por el usuario'
 
 
-def save_identity(device, manufacturer, model, path=None):
+def resolve_identities(devices, identities):
+    connected = {d.id for d in devices}
+    for device in devices:
+        apply_identity(device, identities)
+    for device in devices:
+        if device.identification or device.virtual:
+            continue
+        signature = (device.vid, device.pid, device.kind)
+        if sum((d.vid, d.pid, d.kind) == signature and not d.virtual for d in devices) != 1:
+            continue
+        records = [record for identity, record in identities.items() if identity not in connected
+                   and isinstance(record, dict) and record.get('remember_ports') is True
+                   and (record.get('vid'), record.get('pid'), record.get('kind')) == signature]
+        models = {(r.get('name'), r.get('manufacturer')) for r in records
+                  if isinstance(r.get('name'), str) and isinstance(r.get('manufacturer'), str)}
+        if len(models) == 1 and records:
+            apply_identity(device, {device.id: records[0]})
+            if device.identification:
+                device.identification = 'Modelo confirmado y recordado en este equipo'
+
+
+def save_identity(device, manufacturer, model, path=None, remember_ports=True):
     manufacturer, model = manufacturer.strip(), model.strip()
     if not model or len(model) > 100 or len(manufacturer) > 80 or any(ord(c) < 32 for c in manufacturer + model):
         raise ValueError('Escribe un fabricante y modelo válidos, de hasta 100 caracteres.')
@@ -42,7 +63,7 @@ def save_identity(device, manufacturer, model, path=None):
     target = Path(path or identity_path())
     devices = load_identities(target)
     devices[device.id] = dict(vid=device.vid, pid=device.pid, kind=device.kind,
-                              manufacturer=manufacturer, name=name)
+                              manufacturer=manufacturer, name=name, remember_ports=bool(remember_ports))
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(target.name + '.' + uuid.uuid4().hex + '.tmp')
     try:

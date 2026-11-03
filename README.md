@@ -1,4 +1,4 @@
-# LogiGian64 0.2.7 — Macros y asignaciones
+# LogiGian64 0.2.8 — Macros y asignaciones
 
 Aplicación independiente para Windows 10/11 x64, con un espacio de trabajo negro,
 panel lateral y asignación de macros sobre la imagen del periférico.
@@ -250,3 +250,21 @@ función. Por ejemplo, F5 puede actualizar una página además de ejecutar la ma
 F8 detiene la grabación mientras se graba y funciona como activador fuera de ella.
 Ctrl+Alt+F12 continúa reservado para la parada de emergencia; F12 sin modificadores
 se puede asignar normalmente. Usar predeterminada quita la macro de la tecla.
+
+## Desactivar una macro de teclado (0.2.8)
+
+Haz clic derecho sobre F1–F12 y elige **Desactivar macro**. También puedes
+seleccionar la asignación en la lista del panel izquierdo y pulsar el botón
+**Desactivar macro**. La asignación y sus pasos se conservan; el botón cambia
+a **Activar macro** para recuperarla. Si esa tecla estaba ejecutando una macro,
+se interrumpe y se liberan sus salidas mantenidas, sin detener una macro de otra
+tecla. La tecla física continúa con su función original.
+
+La lista marca las asignaciones desactivadas y la foto mantiene sus objetivos
+disponibles para reactivarlos. Quitar asignación sigue siendo una acción distinta.
+Se incluye la fotografía actualizada que aportó el usuario.
+
+Identificar modelo permite recordar el nombre al cambiar de puerto USB en este
+equipo. Solo se reutiliza una identificación confirmada cuando hay una única
+unidad coincidente y no existen modelos ambiguos. No se cambia el identificador
+de asignaciones ni se presupone el modelo en otros equipos.

@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QLineEdit
 from nexus import windows as win
-from nexus.device_identity import save_identity, load_identities, apply_identity
+from nexus.device_identity import save_identity, load_identities, apply_identity, resolve_identities
 from nexus.core import Store
 from nexus.studio import StudioWindow
 
@@ -122,4 +122,25 @@ class DeviceDetectionTests(unittest.TestCase):
                 return dialog.result()
             with patch.object(QDialog, 'exec', new=fill), patch('nexus.device_identity.save_identity') as save, patch.object(window, 'refresh_devices'):
                 window.identify_device_model()
-                save.assert_called_once_with(device, 'Redragon', 'KUMARA K552RGB-1')
+                save.assert_called_once_with(device, 'Redragon', 'KUMARA K552RGB-1', remember_ports=True)
+
+    def test_confirmed_model_survives_port_change_without_guessing_ambiguous_units(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'identities.json'
+            save_identity(keyboard('old-port'), 'Redragon', 'K552RGB-1', path)
+            records = load_identities(path)
+            moved = keyboard('new-port')
+            resolve_identities([moved], records)
+            self.assertEqual(moved.name, 'Redragon K552RGB-1')
+            self.assertEqual(moved.id, 'new-port')
+            first, second = keyboard('port-a'), keyboard('port-b')
+            resolve_identities([first, second], records)
+            self.assertEqual([first.name, second.name], ['USB DEVICE','USB DEVICE'])
+            records['other'] = {**records['old-port'], 'name':'Other model'}
+            unknown = keyboard('port-c')
+            resolve_identities([unknown], records)
+            self.assertEqual(unknown.name, 'USB DEVICE')
+            records.pop('other')
+            records['old-port']['remember_ports'] = False
+            resolve_identities([unknown], records)
+            self.assertEqual(unknown.name, 'USB DEVICE')

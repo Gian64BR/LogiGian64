@@ -4,8 +4,9 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from PySide6.QtCore import QPointF
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtCore import QPointF, Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QDialog, QMenu
 from nexus.core import Store, new_profile, validate_profile
 from nexus.keyboard_support import FUNCTION_KEYS
 from nexus.studio import StudioWindow
@@ -34,11 +35,13 @@ class KeyboardMacroTests(unittest.TestCase):
         self.assertTrue(path.is_file())
         self.assertEqual(path.suffix, '.jpg')
         art = HardwareArt(device)
-        self.assertEqual((art.picture.width(), art.picture.height()), (1500, 1500))
+        self.assertEqual((art.picture.width(), art.picture.height()), (1500, 607))
         self.assertEqual(art.source_rect().width(), 1396)
         other = keyboard()
         other.name = 'Teclado USB · 0C45:5004'
         self.assertIsNone(reference_image(other))
+        other.name = 'Red Dragon K552RGB-1'
+        self.assertEqual(reference_image(other), path)
         art.close()
 
     def test_keyboard_targets_are_only_f1_through_f12_at_all_window_sizes(self):
@@ -141,3 +144,94 @@ class KeyboardMacroTests(unittest.TestCase):
         self.assertEqual([b['slot'] for b in clean['bindings']], ['F1','F8','F12'])
         self.assertEqual(clean['disabled_controls'], [])
         self.assertEqual(len(clean['macros']), 1)
+
+    def test_left_panel_can_disable_and_reactivate_without_deleting_assignment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(Path(directory))
+            store.active['macros'].append(macro())
+            window = StudioWindow(store)
+            self.addCleanup(window.exit_application)
+            device = keyboard()
+            window.devices = [device]
+            window.open_device(device)
+            with patch.object(QDialog, 'exec', return_value=QDialog.DialogCode.Accepted):
+                window.assign_macro_target('F6', 'm')
+            window.canvas.selected = ''
+            window.binding_list.setCurrentRow(0)
+            self.assertEqual(window.canvas.selected, 'F6')
+            self.assertTrue(window.keyboard_macro_button.isEnabled())
+            window.keyboard_macro_button.click()
+            clean = Store(Path(directory)).active
+            self.assertFalse(clean['bindings'][0]['enabled'])
+            self.assertEqual(len(clean['macros'][0]['events']), 2)
+            self.assertIn('F6', window.canvas.paused)
+            self.assertEqual(window.keyboard_macro_button.text(), 'ACTIVAR MACRO')
+            sent = []
+            window.player.sender = lambda event:sent.append(event.copy())
+            with patch('nexus.windows.modifiers', return_value=set()):
+                window.on_input(101, {'type':'key','vk':117,'down':True})
+                window.on_input(101, {'type':'key','vk':117,'down':False})
+                self.assertEqual(sent, [])
+                window.keyboard_macro_button.click()
+                window.on_input(101, {'type':'key','vk':117,'down':True})
+                self.assertTrue(window.player.wait_idle())
+                self.assertEqual([e['down'] for e in sent], [True,False])
+                window.on_input(101, {'type':'key','vk':117,'down':False})
+            self.assertTrue(Store(Path(directory)).active['bindings'][0]['enabled'])
+            self.assertNotIn('F6', window.canvas.paused)
+
+    def test_right_click_context_menu_disables_and_reactivates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(Path(directory))
+            store.active['macros'].append(macro())
+            window = StudioWindow(store)
+            self.addCleanup(window.exit_application)
+            window.open_device(keyboard())
+            with patch.object(QDialog, 'exec', return_value=QDialog.DialogCode.Accepted):
+                window.assign_macro_target('F6', 'm')
+            window.show()
+            self.app.processEvents()
+            window.canvas.overlay.grab()
+            seen = []
+            class Menu(QMenu):
+                def exec(self, *args):
+                    actions = self.actions()
+                    seen.append([a.text() for a in actions])
+                    return next(a for a in actions if a.text() in ('Desactivar macro','Activar macro'))
+            with patch('nexus.studio.QMenu', Menu):
+                QTest.mouseClick(window.canvas, Qt.MouseButton.RightButton, pos=window.canvas.points['F6'].toPoint())
+                self.assertFalse(store.active['bindings'][0]['enabled'])
+                QTest.mouseClick(window.canvas, Qt.MouseButton.RightButton, pos=window.canvas.points['F6'].toPoint())
+                self.assertTrue(store.active['bindings'][0]['enabled'])
+            self.assertIn('Desactivar macro', seen[0])
+            self.assertIn('Activar macro', seen[1])
+            self.assertEqual(len(seen), 2)
+
+    def test_disabling_stops_only_the_selected_key_and_releases_held_outputs(self):
+        import threading
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(Path(directory))
+            value = macro()
+            value['mode'] = 'latch'
+            store.active['macros'].append(value)
+            window = StudioWindow(store)
+            self.addCleanup(window.exit_application)
+            device = keyboard()
+            window.devices = [device]
+            window.open_device(device)
+            store.active['bindings'] = [{'device_id':device.id,'macro_id':'m','slot':slot,'enabled':True,
+                'trigger':{'type':'key','vk':vk,'mods':[]}} for slot,vk in [('F5',116),('F6',117)]]
+            sent = []
+            pressed = threading.Event()
+            def send(event):
+                sent.append(event.copy())
+                if event.get('down'): pressed.set()
+            window.player.sender = send
+            with patch('nexus.windows.modifiers', return_value=set()):
+                window.on_input(101, {'type':'key','vk':116,'down':True})
+                self.assertTrue(pressed.wait(1))
+                window.set_keyboard_macro_enabled('F6', False)
+                self.assertTrue(window.player.busy)
+                window.set_keyboard_macro_enabled('F5', False)
+                self.assertTrue(window.player.wait_idle())
+            self.assertEqual([e['down'] for e in sent], [True,False])

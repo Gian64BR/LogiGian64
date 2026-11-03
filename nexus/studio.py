@@ -30,6 +30,8 @@ class Router:
         else:
             self.window.stack.setCurrentIndex(1)
             self.window.device_panels.setCurrentIndex({0: 0, 2: 1, 3: 2}.get(index, 0))
+        if hasattr(self.window, "assignment_sidebar"):
+            self.window.assignment_sidebar.setVisible(index != 3)
         for key, control in getattr(self.window, "rail_buttons", {}).items():
             control.setChecked(key == (0 if index == 1 else index))
 
@@ -42,7 +44,8 @@ class StudioWindow(MainWindow):
         self.macro_color = "#9b0037"
         self.timeline_pending = False
         super().__init__(store)
-        self.setWindowTitle("LogiGian64 0.2 — Macros y asignaciones")
+        from . import __version__
+        self.setWindowTitle(f"LogiGian64 {__version__} — Macros y asignaciones")
 
     def eventFilter(self, watched, event):
         # Raw Input records keys separately. Do not let Qt activate focused
@@ -221,6 +224,7 @@ class StudioWindow(MainWindow):
         rail.addStretch()
         body.addLayout(rail)
         sidebar = QFrame()
+        self.assignment_sidebar = sidebar
         sidebar.setObjectName("assignmentPanel")
         sidebar.setFixedWidth(285)
         left = QVBoxLayout(sidebar)
@@ -272,22 +276,12 @@ class StudioWindow(MainWindow):
         lv.addWidget(label("El control RGB físico todavía no está implementado. Esta pantalla no envía colores al ratón.", "muted", True))
         lv.addStretch()
         self.device_panels.addWidget(lighting)
-        sensitivity = QWidget()
-        sv = QVBoxLayout(sensitivity)
-        sv.addStretch()
-        sv.addWidget(label("Sensibilidad", "title"))
-        sv.addWidget(label("El DPI del sensor requiere otro adaptador. El siguiente ajuste corresponde únicamente al puntero de Windows y afecta a todos los ratones.", "muted", True))
-        self.speed_slider = QSlider(Qt.Orientation.Horizontal)
-        self.speed_slider.setRange(1, 20)
-        sv.addWidget(self.speed_slider)
-        self.speed_value = label("", "muted")
-        self.speed_slider.valueChanged.connect(lambda n: self.speed_value.setText(f"Velocidad del puntero de Windows: {n}/20"))
-        sv.addWidget(self.speed_value)
-        sv.addWidget(button("APLICAR A WINDOWS", self.apply_speed), 0, Qt.AlignmentFlag.AlignLeft)
-        sv.addStretch()
-        self.hardware_info = label("", "muted", True)
-        sv.addWidget(self.hardware_info)
-        self.device_panels.addWidget(sensitivity)
+        from .sensitivity import SensitivityPanel
+        self.sensitivity_panel = SensitivityPanel(self)
+        self.speed_slider = self.sensitivity_panel.speed_slider
+        self.speed_value = self.sensitivity_panel.speed_value
+        self.hardware_info = self.sensitivity_panel.hardware_info
+        self.device_panels.addWidget(self.sensitivity_panel)
         body.addWidget(self.device_panels, 1)
         layout.addLayout(body, 1)
         self.device_type, self.device_meta = label(""), label("")

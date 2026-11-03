@@ -46,7 +46,7 @@ class TimelineTests(unittest.TestCase):
                     self.assertEqual(window.stack.currentIndex(),4)
                     self.assertTrue(window.recording)
             window.finish_recording()
-            window.close()
+            window.exit_application()
 
     def test_inline_delay_edit_and_move_survive_save(self):
         app=QApplication.instance() or QApplication([])
@@ -61,7 +61,7 @@ class TimelineTests(unittest.TestCase):
             events=Store(Path(directory)).active['macros'][0]['events']
             self.assertEqual(events[-1],{'type':'wait','delay_ms':120})
             self.assertEqual([e['down'] for e in events if e['type']=='key'],[True,False])
-            window.close()
+            window.exit_application()
 
     def test_wrapping_scroll_and_drop_position_use_visual_rows(self):
         from PySide6.QtWidgets import QScrollArea

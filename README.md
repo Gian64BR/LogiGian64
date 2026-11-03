@@ -1,4 +1,4 @@
-# LogiGian64 0.2.1 — Macros y asignaciones
+# LogiGian64 0.2.2 — Macros y asignaciones
 
 Aplicación independiente para Windows 10/11 x64, con un espacio de trabajo negro,
 panel lateral y asignación de macros sobre la imagen del periférico.
@@ -166,3 +166,15 @@ Por defecto aparece la ventana al iniciar sesión. Puedes elegir **Al iniciar co
 Windows, abrir en la bandeja**. Abrir manualmente sigue mostrando la ventana.
 El menú también permite pausar asignaciones, detener macros y restaurar el control,
 abrir la carpeta de perfiles y minimizar a la bandeja.
+
+## Sensibilidad y bandeja (0.2.2)
+
+La pantalla Sensibilidad muestra cinco niveles DPI de referencia. Arrastra los
+puntos, pulsa su valor en el panel lateral o haz doble clic sobre ellos para
+editarlos. Las flechas ajustan el punto seleccionado en pasos de 50; los niveles
+se guardan por dispositivo y se pueden restablecer. No se envían al sensor: DPI
+físico y frecuencia de sondeo siguen pendientes de un adaptador compatible.
+El control inferior aplica la velocidad global del puntero de Windows.
+
+La X oculta la ventana sin detener las macros. Doble clic en el icono de la
+bandeja vuelve a abrirla. Para terminar el programa, elige **Salir** en su menú.

@@ -11,6 +11,31 @@ from nexus.studio_widgets import STYLE
 
 
 class ApplicationTests(unittest.TestCase):
+    def test_window_close_keeps_running_until_tray_exit(self):
+        from unittest.mock import patch
+        from PySide6.QtWidgets import QSystemTrayIcon
+        with tempfile.TemporaryDirectory() as directory:
+            window = MainWindow(Store(Path(directory)))
+            self.addCleanup(lambda: window.exit_application() if not getattr(window, "_closing", False) else None)
+            window.show()
+            with patch.object(QSystemTrayIcon, "isSystemTrayAvailable", return_value=True), \
+                 patch.object(window.player, "stop", wraps=window.player.stop) as stop, \
+                 patch.object(window, "leave_editor", wraps=window.leave_editor) as leave:
+                self.assertFalse(window.close())
+                self.assertFalse(window.isVisible())
+                self.assertTrue(window.tray.isVisible())
+                stop.assert_not_called()
+                leave.assert_not_called()
+                window.restore()
+                self.assertTrue(window.isVisible())
+                exit_action = next(a for a in window.tray.contextMenu().actions() if a.text() == "Salir")
+                exit_action.trigger()
+                self.assertFalse(window.isVisible())
+                self.assertFalse(window.tray.isVisible())
+                stop.assert_called()
+                leave.assert_called_once()
+            self.doCleanups()
+
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
@@ -39,7 +64,7 @@ class ApplicationTests(unittest.TestCase):
             self.assertEqual(len(Store(Path(directory)).active["disabled_controls"]), 2)
             window.set_control_state("Lateral 4", False)
             self.assertEqual(window.canvas.disabled, {"Lateral 5"})
-            window.close()
+            window.exit_application()
 
     def test_library_context_rename_delete_and_rail_selection(self):
         from unittest.mock import patch
@@ -67,7 +92,7 @@ class ApplicationTests(unittest.TestCase):
                 window.library_context_menu(window.assign_library.visualItemRect(item).center())
             self.assertEqual(seen, ["Editar", "Renombrar", "Eliminar"])
             self.assertEqual(Store(Path(directory)).active["macros"], [])
-            window.close()
+            window.exit_application()
 
     def test_save_returns_to_assignments_and_standard_delay_updates_steps(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -92,7 +117,7 @@ class ApplicationTests(unittest.TestCase):
             window.save_macro()
             self.assertEqual(window.stack.currentIndex(), 1)
             self.assertEqual([e["delay_ms"] for e in Store(Path(directory)).active["macros"][0]["events"]], [75, 75])
-            window.close()
+            window.exit_application()
 
     def test_recorder_accepts_clicks_in_nexus_and_preserves_large_handles(self):
         from unittest.mock import patch
@@ -113,7 +138,7 @@ class ApplicationTests(unittest.TestCase):
             self.assertEqual(received, [2 ** 40, 2 ** 40])
             self.assertEqual([e["down"] for e in window.draft], [True, False])
             window.finish_recording()
-            window.close()
+            window.exit_application()
 
     def test_generic_side_assignment_is_ready_without_learning_and_runs(self):
         from nexus.studio_widgets import LearnBindingDialog
@@ -138,7 +163,7 @@ class ApplicationTests(unittest.TestCase):
             self.assertTrue(window.player.wait_idle())
             self.assertEqual([e["down"] for e in sent], [True, False])
             window.events.input.emit(2 ** 40, {"type": "mouse", "button": "x1", "down": False})
-            window.close()
+            window.exit_application()
 
     def test_click_without_macros_opens_control_menu(self):
         from unittest.mock import patch
@@ -160,7 +185,7 @@ class ApplicationTests(unittest.TestCase):
             self.assertIn("Usar predeterminada", actions_seen)
             self.assertIn("Desactivar", actions_seen)
             self.assertEqual(window.store.active["macros"], [])
-            window.close()
+            window.exit_application()
 
     def test_disable_persists_suppresses_and_default_restores(self):
         from types import SimpleNamespace
@@ -188,7 +213,7 @@ class ApplicationTests(unittest.TestCase):
             self.assertEqual(Store(Path(directory)).active["disabled_controls"], [])
             self.assertNotIn(3, session.update_buttons.call_args.args[0])
             window.g502 = None
-            window.close()
+            window.exit_application()
 
     def test_editor_persistence_recording_and_device_trigger(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -229,7 +254,7 @@ class ApplicationTests(unittest.TestCase):
             window.on_input(device.handles[0], {"type": "mouse", "button": "x1", "down": False})
             self.assertTrue(window.player.wait_idle())
             self.assertEqual(len(sent), 2)
-            window.close()
+            window.exit_application()
             self.app.processEvents()
 
 

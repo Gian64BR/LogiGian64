@@ -4,7 +4,7 @@ Fecha local: 2 de noviembre de 2026. Windows x64.
 
 ## Ejecutado
 
-- 45 pruebas automatizadas aprobadas: comienzo al pulsar, parada al soltar,
+- 48 pruebas automatizadas aprobadas: comienzo al pulsar, parada al soltar,
   interrupción de esperas de 60 s, alternancia, pulsaciones rápidas, liberaciones
   de otros botones, tres fases de secuencia y limpieza de entradas pendientes.
 - Persistencia, importación inválida y recuperación de bibliotecas dañadas.
@@ -57,3 +57,13 @@ Los otros fabricantes utilizan por ahora el modo genérico con acción original.
 
 El código del adaptador es una implementación propia, no una copia del código
 propietario de G HUB. No se implementan operaciones de flash o DFU.
+
+## Actualización 0.2.2
+
+- Cierre con X conserva la bandeja, permite restaurar la ventana y no detiene el
+  reproductor. Salir desde la bandeja ejecuta la limpieza de entradas.
+- Niveles de referencia: arrastre con eventos Qt, ajuste por teclado, límites,
+  edición manual, guardado por dispositivo, restablecimiento y datos inválidos.
+- Modificar niveles no llama al ajuste del puntero de Windows. Aplicar a Windows
+  sí envía el valor elegido (verificado con un emisor simulado).
+- Revisión visual a 1300x900 y 1920x1032. No se declara control físico del DPI.

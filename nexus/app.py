@@ -425,7 +425,7 @@ class MainWindow(QMainWindow):
         menu.addAction("Detener y restaurar · Ctrl+Alt+F12", self.emergency_stop)
         menu.addAction("Activar / pausar asignaciones", lambda: self.armed.setChecked(not self.armed.isChecked()))
         menu.addSeparator()
-        menu.addAction("Salir", self.close)
+        menu.addAction("Salir", self.exit_application)
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(lambda reason: self.restore() if reason == QSystemTrayIcon.ActivationReason.DoubleClick else None)
         self.tray.show()
@@ -441,6 +441,14 @@ class MainWindow(QMainWindow):
         self.showNormal()
         self.raise_()
         self.activateWindow()
+
+    def exit_application(self):
+        self._exit_requested = True
+        try:
+            if self.close():
+                QApplication.instance().quit()
+        finally:
+            self._exit_requested = False
 
     def status(self, text):
         self.statusBar().showMessage(text)
@@ -528,6 +536,8 @@ class MainWindow(QMainWindow):
         except OSError as error:
             self.status(str(error))
         self.speed_slider.setEnabled(device.kind == "mouse")
+        if hasattr(self, "sensitivity_panel"):
+            self.sensitivity_panel.load_device(device)
         self.refresh_macros()
         self.refresh_bindings()
         self.tabs.setCurrentIndex(0)
@@ -1143,6 +1153,10 @@ class MainWindow(QMainWindow):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.store.directory)))
 
     def closeEvent(self, event):
+        if not getattr(self, "_exit_requested", False):
+            event.ignore()
+            self.to_tray()
+            return
         if not self.leave_editor():
             result = QMessageBox.question(self, "Cambios sin guardar", "La secuencia no es válida. ¿Salir descartando los cambios sin guardar?")
             if result != QMessageBox.StandardButton.Yes:

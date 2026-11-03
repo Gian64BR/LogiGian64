@@ -16,7 +16,7 @@ def main():
     args = parser.parse_args()
     from nexus import windows as win
     if args.diagnose:
-        result = {"version": "0.2.1", "devices": [d.to_dict() for d in win.enumerate_devices()],
+        result = {"version": "0.2.2", "devices": [d.to_dict() for d in win.enumerate_devices()],
                   "pointer_speed": win.pointer_speed(), "hardware_plugins": ["G502 HERO host buttons (explicit activation)"], "macro_engine": "Windows Raw Input + SendInput + HID++ button stream"}
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
@@ -26,6 +26,7 @@ def main():
     from nexus.studio import StudioWindow as MainWindow
     from nexus.studio_widgets import STYLE
     app = QApplication(sys.argv[:1])
+    app.setQuitOnLastWindowClosed(False)
     app.setApplicationName("LogiGian64")
     app.setOrganizationName("LogiGian64")
     store = Store(args.data_dir)
@@ -61,7 +62,7 @@ def main():
                     window.tabs.setCurrentIndex(1)
                     app.processEvents()
                     window.grab().save(str(args.screenshots / "03-macros.png"))
-                window.close()
+                window.exit_application()
             except Exception:
                 logging.exception("Screenshot QA")
                 app.exit(1)

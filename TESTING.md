@@ -2,8 +2,10 @@
 
 Para ejecutar el código editable, instalar `requirements.txt` con Python 3.11
 y abrir `python main.py` desde la carpeta del proyecto. Usa los mismos perfiles de `%LOCALAPPDATA%\NexusHub` que el ejecutable
-instalado. Cerrar la aplicación antes de abrir otra instancia. Después de cada
-modificación del código basta cerrar y volver a ejecutar `python main.py`.
+instalado. Elegir **Salir** en el menú del icono de la bandeja antes de abrir otra
+instancia. Después de cada modificación del código basta salir desde la bandeja
+y volver a ejecutar `python main.py`. La X oculta la ventana y mantiene las macros
+activas; doble clic en el icono de la bandeja vuelve a mostrarla.
 
 El ejecutable instalado y el instalador se conservan hasta que el usuario pida
 compilarlos y actualizarlos.

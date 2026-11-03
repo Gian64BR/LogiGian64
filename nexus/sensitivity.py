@@ -1,7 +1,7 @@
-"""Editable reference DPI levels; physical sensor writes are not supported."""
+"""Editable DPI levels with confirmed, volatile G502 HERO sensor control."""
 import json
 
-from PySide6.QtCore import Qt, QPointF, Signal
+from PySide6.QtCore import Qt, QPointF, Signal, QTimer
 from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import QWidget, QFrame, QHBoxLayout, QVBoxLayout, QSlider, QInputDialog
 
@@ -121,6 +121,14 @@ class SensitivityPanel(QWidget):
         super().__init__()
         self.window = window
         self.device_id = None
+        self.supported = False
+        self.connected = False
+        self.pending_dpi = None
+        self.current_dpi = None
+        self.apply_timer = QTimer(self)
+        self.apply_timer.setSingleShot(True)
+        self.apply_timer.setInterval(220)
+        self.apply_timer.timeout.connect(self.apply_dpi)
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(28)
@@ -143,9 +151,11 @@ class SensitivityPanel(QWidget):
         left.addLayout(self.values)
         left.addSpacing(15)
         left.addWidget(label('El nivel seleccionado aparece en amarillo y subrayado. Los niveles se guardan por dispositivo.', 'muted', True))
-        self.notice = label('NIVELES DE REFERENCIA\nNo se envían al sensor. El DPI físico y el cambio mediante botones del ratón todavía requieren un adaptador compatible.', 'muted', True)
+        self.notice = label('', 'muted', True)
         self.notice.setStyleSheet('color:#ffcc00; font-size:12px;')
         left.addWidget(self.notice)
+        self.dpi_button = button('ACTIVAR CONTROL Y APLICAR DPI', self.apply_dpi)
+        left.addWidget(self.dpi_button)
         left.addSpacing(20)
         left.addWidget(label('VELOCIDAD DE RESPUESTA\n(POR SEGUNDO)', 'eyebrow'))
         left.addWidget(label('1000     500     250     125 Hz\nControl de frecuencia no disponible.', 'muted', True))
@@ -166,7 +176,8 @@ class SensitivityPanel(QWidget):
         self.track.editRequested.connect(self.edit_level)
         right.addWidget(self.track)
         right.addStretch(1)
-        right.addWidget(label('Los niveles de referencia no modifican el DPI físico del ratón.', 'muted', True), 0, Qt.AlignmentFlag.AlignHCenter)
+        self.confirmed_label = label('DPI físico sin consultar', 'muted', True)
+        right.addWidget(self.confirmed_label, 0, Qt.AlignmentFlag.AlignHCenter)
         right.addStretch(1)
         right.addWidget(label('VELOCIDAD DEL PUNTERO DE WINDOWS', 'eyebrow'))
         self.speed_slider = QSlider(Qt.Orientation.Horizontal)
@@ -182,7 +193,12 @@ class SensitivityPanel(QWidget):
         self.refresh_values()
 
     def load_device(self, device):
+        self.apply_timer.stop()
+        self.pending_dpi = None
         self.device_id = device.id
+        self.supported = (device.vid, device.pid) == ('046D', 'C08B')
+        self.connected = False
+        self.current_dpi = None
         self.track.levels, self.track.selected = DEFAULT_LEVELS.copy(), 1
         try:
             data = json.loads(self.window.preferences().value(f'sensitivity/{device.id}', '{}'))
@@ -197,6 +213,66 @@ class SensitivityPanel(QWidget):
         for control in self.value_buttons:
             control.setEnabled(device.kind == 'mouse')
         self.refresh_values()
+        session = self.window.g502
+        self.dpi_button.setEnabled(self.supported)
+        self.notice.setText('G502 HERO: activa el control directo para aplicar DPI al sensor. No modifica la memoria integrada.' if self.supported else 'Niveles de referencia: este modelo aún no tiene control físico de DPI.')
+        self.confirmed_label.setText('DPI físico sin consultar' if self.supported else 'DPI físico no disponible para este modelo')
+        if session and session.ready and session.device.id == device.id:
+            self.hardware_changed({'kind': 'ready', 'device_id': device.id, 'dpi': session.dpi_state})
+
+    def hardware_changed(self, data):
+        if data.get('device_id') != self.device_id:
+            return
+        kind = data['kind']
+        if kind == 'ready':
+            state = data.get('dpi')
+            self.connected = bool(state)
+            if state:
+                self.current_dpi = state['current']
+                self.confirmed_label.setText(f"DPI físico leído del sensor: {self.current_dpi}")
+                self.notice.setText(f"CONTROL REAL ACTIVO\n{state['minimum']}–{state['maximum']} DPI · paso {state['step'] or 'según sensor'}. Arrastra o elige un punto para aplicarlo. Al salir se restaura el DPI anterior.")
+                self.dpi_button.setText('APLICAR DPI AL SENSOR')
+                if self.pending_dpi is not None:
+                    self.apply_timer.start()
+                elif self.current_dpi in self.track.levels:
+                    self.track.selected = self.track.levels.index(self.current_dpi)
+                    self.refresh_values()
+            else:
+                self.notice.setText('DPI no disponible: ' + str(data.get('dpi_error') or 'el sensor no respondió'))
+        elif kind == 'dpi':
+            self.current_dpi = data['current']
+            self.confirmed_label.setText(f'DPI físico confirmado por el sensor: {self.current_dpi}')
+        elif kind == 'dpi_error':
+            self.current_dpi = None
+            self.confirmed_label.setText('DPI NO confirmado: ' + data['error'])
+        elif kind == 'disconnected':
+            self.connected = False
+            self.pending_dpi = None
+            self.apply_timer.stop()
+            self.confirmed_label.setText('Control directo desconectado; DPI seleccionado no aplicado.')
+            self.notice.setText('Activa el control directo para cambiar el DPI físico del G502.')
+            self.dpi_button.setText('ACTIVAR CONTROL Y APLICAR DPI')
+
+    def apply_dpi(self):
+        if not self.supported or not self.device_id:
+            return
+        session = self.window.g502
+        self.pending_dpi = self.track.levels[self.track.selected]
+        if not session or not session.ready or session.device.id != self.device_id:
+            if session and session.thread and session.thread.is_alive():
+                return
+            self.window.activate_g502()
+            if not self.window.g502:
+                self.pending_dpi = None
+            return
+        try:
+            value = self.pending_dpi
+            session.set_dpi(value)
+            self.pending_dpi = None
+            self.confirmed_label.setText(f'Solicitando {value} DPI al sensor…')
+        except (OSError, ValueError) as error:
+            self.pending_dpi = None
+            self.confirmed_label.setText('DPI no aplicado: ' + str(error))
 
     def refresh_values(self):
         for index, control in enumerate(self.value_buttons):
@@ -208,11 +284,14 @@ class SensitivityPanel(QWidget):
         if self.device_id:
             self.window.preferences().setValue(f'sensitivity/{self.device_id}', json.dumps({'levels': self.track.levels, 'selected': self.track.selected}))
         self.refresh_values()
+        if self.connected:
+            self.confirmed_label.setText('Cambio pendiente de confirmación del sensor…')
+            self.apply_timer.start()
 
     def edit_level(self, index):
         low = self.track.levels[index - 1] + 50 if index else 100
         high = self.track.levels[index + 1] - 50 if index < 4 else 25600
-        value, accepted = QInputDialog.getInt(self, 'Nivel DPI de referencia', 'Valor (no se envía al sensor):', self.track.levels[index], low, high, 50)
+        value, accepted = QInputDialog.getInt(self, 'Nivel DPI', 'Valor DPI del G502:' if self.supported else 'Valor de referencia (sin control físico):', self.track.levels[index], low, high, 50)
         if accepted:
             self.track.set_level(index, value)
 

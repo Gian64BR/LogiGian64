@@ -1,3 +1,3 @@
 """LogiGian64 — independent Windows peripheral and macro studio."""
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"

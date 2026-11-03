@@ -60,10 +60,15 @@ def matches_device(item, device):
 
 
 class G502Session:
-    def __init__(self, device, on_event, on_status, on_error):
+    def __init__(self, device, on_event, on_status, on_error, on_hardware=None):
         self.device = device
         self.handle = -int(device.id[:12], 16)
         self.on_event, self.on_status, self.on_error = on_event, on_status, on_error
+        self.on_hardware = on_hardware or (lambda data: None)
+        self.dpi_index = 0
+        self.dpi_state = None
+        self.original_dpi = None
+        self.changed_dpi = False
         self.commands = queue.Queue()
         self.stop_requested = threading.Event()
         self.thread = None
@@ -98,7 +103,61 @@ class G502Session:
         self.thread.start()
 
     def update_buttons(self, buttons):
-        self.commands.put(set(buttons))
+        self.commands.put(("buttons", set(buttons)))
+
+    def set_dpi(self, value):
+        if not self.ready or not self.dpi_state:
+            raise OSError("Activa el control directo del G502 antes de cambiar el DPI.")
+        self.validate_dpi(value)
+        self.commands.put(("dpi", value))
+
+    def validate_dpi(self, value):
+        state = self.dpi_state
+        if type(value) is not int or not state or not state['minimum'] <= value <= state['maximum']:
+            raise ValueError("DPI fuera del rango admitido por el sensor.")
+        if state['step']:
+            if (value - state['minimum']) % state['step']:
+                raise ValueError(f"El sensor requiere pasos de {state['step']} DPI.")
+        elif value not in state['values']:
+            raise ValueError("El sensor no admite ese valor DPI.")
+
+    def _read_dpi(self):
+        data = self.request(self.dpi_index, 2, [0])
+        if len(data) < 5 or data[0] != 0:
+            raise OSError("Respuesta DPI del sensor incompleta.")
+        return (data[1] << 8) | data[2]
+
+    def _load_dpi(self):
+        self.dpi_index = self.feature(0x2201)
+        if self.request(self.dpi_index, 0)[0] < 1:
+            raise OSError("El G502 no comunicó un sensor DPI.")
+        data = self.request(self.dpi_index, 1, [0])
+        if len(data) < 3 or data[0] != 0:
+            raise OSError("Lista DPI del sensor incompleta.")
+        values, step = [], 0
+        for i in range(1, len(data) - 1, 2):
+            value = (data[i] << 8) | data[i + 1]
+            if not value:
+                break
+            if value > 0xE000:
+                step = value - 0xE000
+            else:
+                values.append(value)
+        if not values or min(values) < 1:
+            raise OSError("El sensor no comunicó un rango DPI válido.")
+        self.original_dpi = self._read_dpi()
+        self.dpi_state = {'minimum': min(values), 'maximum': max(values), 'step': step,
+                          'values': values, 'current': self.original_dpi}
+
+    def _apply_dpi(self, value):
+        self.validate_dpi(value)
+        self.changed_dpi = True
+        self.request(self.dpi_index, 3, [0, value >> 8, value & 255])
+        current = self._read_dpi()
+        if current != value:
+            raise OSError(f"El sensor confirmó {current} DPI en lugar de {value}.")
+        self.dpi_state['current'] = current
+        self.on_hardware({'kind': 'dpi', 'device_id': self.device.id, **self.dpi_state})
 
     def close(self):
         self.stop_requested.set()
@@ -169,11 +228,22 @@ class G502Session:
 
     def _restore(self):
         failures = []
+        if self.changed_dpi:
+            try:
+                value = self.original_dpi
+                self.request(self.dpi_index, 3, [0, value >> 8, value & 255])
+                if self._read_dpi() != value:
+                    raise OSError("El sensor no confirmó el DPI original.")
+                self.changed_dpi = False
+            except Exception as error:
+                failures.append("DPI original: " + str(error))
         for needed, index, fn, data, description in (
             (self.changed_map, self.spy, 4, self.original_map or [], "mapa de botones"),
             (self.started_spy, self.spy, 2, [], "captura de botones"),
             (self.changed_mode, self.profiles, 1, [self.original_mode or 1], "modo del ratón")):
             if needed:
+                if description == "modo del ratón" and self.changed_dpi:
+                    continue
                 try:
                     self.request(index, fn, data)
                     if description == "mapa de botones" and self.request(self.spy, 3)[:self.count] != self.original_map:
@@ -212,6 +282,12 @@ class G502Session:
             self.original_map = self.request(self.spy, 3)[:self.count]
             if len(self.original_map) != self.count:
                 raise OSError("No se pudo guardar el mapa original de botones.")
+            dpi_error = None
+            try:
+                self._load_dpi()
+            except (OSError, TimeoutError) as error:
+                self.dpi_state = None
+                dpi_error = str(error)
             if self.original_mode != 2:
                 self.changed_mode = True
                 self.request(self.profiles, 1, [2])
@@ -220,15 +296,22 @@ class G502Session:
             self.started_spy = True
             self.request(self.spy, 1)
             self._apply_map(buttons)
+            if self.dpi_state:
+                self.dpi_state['current'] = self._read_dpi()
             self.ready = True
+            self.on_hardware({'kind': 'ready', 'device_id': self.device.id, 'dpi': self.dpi_state, 'dpi_error': dpi_error})
             self.on_status(f"G502 conectado directamente · {self.count} botones físicos · Ctrl+Alt+F12 detiene macros")
             threading.Thread(target=self._monitor, name="G502Ownership", daemon=True).start()
             while not self.stop_requested.is_set():
                 try:
-                    newest = self.commands.get_nowait()
-                    while not self.commands.empty():
-                        newest = self.commands.get_nowait()
-                    self._apply_map(newest)
+                    command, value = self.commands.get_nowait()
+                    if command == 'buttons':
+                        self._apply_map(value)
+                    elif command == 'dpi':
+                        try:
+                            self._apply_dpi(value)
+                        except (OSError, ValueError) as error:
+                            self.on_hardware({'kind': 'dpi_error', 'device_id': self.device.id, 'error': str(error)})
                 except queue.Empty:
                     pass
                 report = self.channel.read(64, 50)
@@ -240,6 +323,7 @@ class G502Session:
             self.stop_requested.set()
             problem = problem or self.monitor_error
             self.ready = False
+            self.on_hardware({'kind': 'disconnected', 'device_id': self.device.id})
             # Deliver releases even after cable loss so a held macro cannot continue.
             for bit in range(self.count):
                 if self.previous & (1 << bit):

@@ -1,4 +1,4 @@
-# LogiGian64 0.2.2 — Macros y asignaciones
+# LogiGian64 0.2.3 — Macros y asignaciones
 
 Aplicación independiente para Windows 10/11 x64, con un espacio de trabajo negro,
 panel lateral y asignación de macros sobre la imagen del periférico.
@@ -74,8 +74,9 @@ reintentar; no se informa de restauración exitosa sin confirmación.
 - En dispositivos genéricos, las macros responden al activador, pero conservan
   también su acción original. La supresión física requiere un adaptador del modelo.
 - Los botones que no se exponen a Windows necesitan un adaptador como el del G502.
-- DPI físico, RGB, polling y escritura en memoria integrada no están implementados.
-  El control de sensibilidad disponible corresponde solo al puntero de Windows.
+- DPI físico disponible para G502 HERO 046D:C08B con control directo activo y
+  confirmación de lectura. RGB, polling y escritura en memoria integrada no
+  están implementados. Otros modelos mantienen niveles de referencia.
 - Los perfiles se seleccionan manualmente. Nexus debe permanecer abierto o en la
   bandeja. Windows puede bloquear SendInput hacia aplicaciones con más privilegios.
 - Los juegos que ignoren entrada sintética no están verificados.
@@ -167,14 +168,23 @@ Windows, abrir en la bandeja**. Abrir manualmente sigue mostrando la ventana.
 El menú también permite pausar asignaciones, detener macros y restaurar el control,
 abrir la carpeta de perfiles y minimizar a la bandeja.
 
-## Sensibilidad y bandeja (0.2.2)
+## Sensibilidad y bandeja (0.2.3)
 
-La pantalla Sensibilidad muestra cinco niveles DPI de referencia. Arrastra los
-puntos, pulsa su valor en el panel lateral o haz doble clic sobre ellos para
-editarlos. Las flechas ajustan el punto seleccionado en pasos de 50; los niveles
-se guardan por dispositivo y se pueden restablecer. No se envían al sensor: DPI
-físico y frecuencia de sondeo siguen pendientes de un adaptador compatible.
-El control inferior aplica la velocidad global del puntero de Windows.
+La pantalla Sensibilidad permite arrastrar cinco niveles o editar sus valores.
+En el **G502 HERO 046D:C08B**, pulsa **Activar control y aplicar DPI**. Una vez
+conectado, seleccionar o mover un punto cambia el DPI físico mediante HID++
+0x2201. El valor solo se informa como aplicado cuando el sensor lo confirma por
+lectura. Se respetan el rango y los pasos comunicados por el dispositivo. Al
+salir o desconectar el control directo se restaura el DPI anterior. No se escribe
+la memoria integrada. En otros modelos los niveles siguen siendo de referencia.
+La velocidad global de Windows es un control independiente.
+
+Para asignar una macro, créala, añade o graba acciones y guarda. Si pulsas un
+objetivo con la biblioteca vacía, se abre la creación de macro. Al guardar se
+retoma la asignación. En el G502 se conecta el control directo antes de identificar
+el botón: pulsa y suelta el botón físico y guarda la asignación. Si G HUB está
+abierto, el programa pide confirmación antes de cerrarlo. Las macros de G HUB
+no se importan automáticamente.
 
 La X oculta la ventana sin detener las macros. Doble clic en el icono de la
 bandeja vuelve a abrirla. Para terminar el programa, elige **Salir** en su menú.

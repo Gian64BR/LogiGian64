@@ -15,6 +15,34 @@ from nexus.windows import Device
 
 
 class SensitivityTests(unittest.TestCase):
+    def test_physical_dpi_needs_sensor_confirmation(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as directory:
+            window = StudioWindow(Store(Path(directory)))
+            self.addCleanup(window.exit_application)
+            device = Device('test-g502', 'G502', 'mouse', 'Logitech', '046D', 'C08B', [], [])
+            window.open_device(device)
+            state = {'minimum': 100, 'maximum': 25600, 'step': 50, 'current': 3200}
+            window.g502 = SimpleNamespace(ready=True, device=device, set_dpi=Mock(), close=lambda: True)
+            panel = window.sensitivity_panel
+            panel.hardware_changed({'kind': 'ready', 'device_id': device.id, 'dpi': state})
+            self.assertEqual(panel.track.selected, 3)
+            panel.track.set_level(3, 3300)
+            panel.apply_timer.stop()
+            panel.apply_dpi()
+            window.g502.set_dpi.assert_called_once_with(3300)
+            self.assertIn('Solicitando', panel.confirmed_label.text())
+            self.assertEqual(panel.current_dpi, 3200)
+            panel.hardware_changed({'kind': 'dpi', 'device_id': device.id, 'current': 3300})
+            self.assertEqual(panel.current_dpi, 3300)
+            self.assertIn('confirmado', panel.confirmed_label.text())
+            panel.hardware_changed({'kind': 'dpi_error', 'device_id': device.id, 'error': 'Sin respuesta'})
+            self.assertIsNone(panel.current_dpi)
+            panel.hardware_changed({'kind': 'disconnected', 'device_id': device.id})
+            self.assertFalse(panel.connected)
+            window.g502 = None
+
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])

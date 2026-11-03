@@ -11,6 +11,42 @@ from nexus.studio_widgets import STYLE
 
 
 class ApplicationTests(unittest.TestCase):
+    def test_empty_assignment_starts_macro_creation_instead_of_error(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            window = MainWindow(Store(Path(directory)))
+            self.addCleanup(window.exit_application)
+            window.open_device(window.devices[0])
+            with patch.object(window, 'new_macro', return_value='new') as create, patch.object(window, 'error') as error:
+                window.assign_macro_target('G4')
+                create.assert_called_once()
+                error.assert_not_called()
+                self.assertEqual(window._pending_macro_target, (window.device.id, 'G4'))
+
+    def test_g502_assignment_connects_then_resumes_calibration(self):
+        from unittest.mock import patch
+        from nexus.windows import Device
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(Path(directory))
+            store.active['macros'].append({'id': 'm', 'name': 'Macro', 'events': [{'type': 'wait', 'delay_ms': 50}]})
+            window = MainWindow(store)
+            self.addCleanup(window.exit_application)
+            device = Device('123456789abcdef', 'G502 HERO', 'mouse', 'Logitech', '046D', 'C08B', [], [])
+            window.open_device(device)
+            def connect():
+                window.g502 = SimpleNamespace(ready=False, close=lambda: True)
+            with patch.object(window, 'activate_g502', side_effect=connect) as activate:
+                window.assign_macro_target('G4', 'm')
+                activate.assert_called_once()
+            window.g502.ready = True
+            window.g502.handle = -1
+            with patch('nexus.app.QTimer.singleShot') as later:
+                window.hardware_changed({'kind': 'ready', 'device_id': device.id, 'dpi': None})
+                self.assertEqual(later.call_count, 1)
+                self.assertIsNone(window._pending_binding)
+            window.g502 = None
+
     def test_window_close_keeps_running_until_tray_exit(self):
         from unittest.mock import patch
         from PySide6.QtWidgets import QSystemTrayIcon

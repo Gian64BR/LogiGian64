@@ -30,6 +30,7 @@ class Events(QObject):
     finished = Signal(str)
     error = Signal(str)
     plugin_error = Signal(str)
+    hardware = Signal(object)
 
 
 class NativeInput(QAbstractNativeEventFilter):
@@ -83,6 +84,7 @@ class MainWindow(QMainWindow):
         self.events.input.connect(self.on_input)
         self.events.changed.connect(self.schedule_refresh)
         self.events.plugin_error.connect(self.g502_error)
+        self.events.hardware.connect(self.hardware_changed)
         self.g502 = None
         self.learning = None
         self.devices = []
@@ -969,7 +971,9 @@ class MainWindow(QMainWindow):
         self.physical_held.clear()
         self.armed.setChecked(False)
         if self.g502:
-            self.g502.close()
+            if not self.g502.close():
+                self.status("Restauración del G502 pendiente; vuelve a detener o salir para reintentar.")
+                return
             self.g502 = None
         self.status("Parada de emergencia · asignaciones pausadas y control directo restaurado")
 
@@ -977,6 +981,15 @@ class MainWindow(QMainWindow):
         self.stop_all()
         self.status(message)
         self.error(message)
+
+    def hardware_changed(self, data):
+        if hasattr(self, 'sensitivity_panel'):
+            self.sensitivity_panel.hardware_changed(data)
+        if data['kind'] == 'ready' and self.device and self.device.id == data['device_id']:
+            pending = getattr(self, '_pending_binding', None)
+            self._pending_binding = None
+            if pending and pending[0] == self.device.id:
+                QTimer.singleShot(0, lambda: self.assign_macro_target(pending[1], pending[2]))
 
     def activate_g502(self):
         if not self.device or (self.device.vid, self.device.pid) != ("046D", "C08B"):
@@ -1001,7 +1014,8 @@ class MainWindow(QMainWindow):
                 close_ghub()
         except (OSError, TimeoutError) as error:
             return self.error(error)
-        self.g502 = G502Session(self.device, self.events.input.emit, self.events.error.emit, self.events.plugin_error.emit)
+        self.g502 = G502Session(self.device, self.events.input.emit, self.events.error.emit, self.events.plugin_error.emit,
+                                self.events.hardware.emit)
         buttons = {b["trigger"]["button"] for b in self.store.active["bindings"]
                    if b["device_id"] == self.device.id and b["trigger"]["type"] == "gbutton" and b["enabled"]}
         buttons |= {c["button"] for c in self.store.active.get("disabled_controls", [])

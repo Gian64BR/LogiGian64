@@ -8,7 +8,7 @@ from nexus.g502 import G502Session
 
 
 class FakeHid:
-    def __init__(self, refuse_start=False, fail_first_restore=False):
+    def __init__(self, refuse_start=False, fail_first_restore=False, dpi=False, refuse_dpi=False):
         self.responses = queue.Queue()
         self.mode = 1
         self.mapping = list(range(1, 12))
@@ -17,6 +17,9 @@ class FakeHid:
         self.refuse_start = refuse_start
         self.fail_first_restore = fail_first_restore
         self.has_changed = False
+        self.supports_dpi = dpi
+        self.dpi = 3200
+        self.refuse_dpi = refuse_dpi
 
     def open_path(self, path):
         pass
@@ -27,7 +30,16 @@ class FakeHid:
         self.requests.append((index, fn, data))
         answer = [0] * 16
         if index == 0:
-            answer[0] = {0x8110: 13, 0x8100: 12}[(data[0] << 8) | data[1]]
+            answer[0] = {0x8110: 13, 0x8100: 12, 0x2201: 10 if self.supports_dpi else 0}.get((data[0] << 8) | data[1], 0)
+        elif index == 10:
+            if fn == 0:
+                answer[0] = 1
+            elif fn == 1:
+                answer[:7] = [0, 0, 100, 0xE0, 50, 100, 0]
+            elif fn == 2:
+                answer[:5] = [0, self.dpi >> 8, self.dpi & 255, 3, 232]
+            elif fn == 3 and not self.refuse_dpi:
+                self.dpi = (data[1] << 8) | data[2]
         elif index == 12 and fn == 2:
             answer[0] = self.mode
         elif index == 12 and fn == 1:
@@ -116,6 +128,43 @@ class G502Tests(unittest.TestCase):
         self.assertFalse(session.needs_restore)
         self.assertTrue(fake.closed)
         self.assertEqual(fake.mapping, list(range(1, 12)))
+
+    def test_sensor_dpi_write_readback_and_restore(self):
+        fake = FakeHid(dpi=True)
+        session, ready, errors, _ = self.launch(fake)
+        self.assertTrue(ready.wait(1))
+        self.assertEqual(session.dpi_state['minimum'], 100)
+        self.assertEqual(session.dpi_state['maximum'], 25600)
+        self.assertEqual(session.dpi_state['step'], 50)
+        confirmed = threading.Event()
+        updates = []
+        session.on_hardware = lambda data: (updates.append(data), confirmed.set() if data['kind'] == 'dpi' else None)
+        session.set_dpi(1450)
+        self.assertTrue(confirmed.wait(1))
+        self.assertEqual(fake.dpi, 1450)
+        self.assertEqual(updates[-1]['current'], 1450)
+        with self.assertRaises(ValueError):
+            session.set_dpi(1451)
+        with self.assertRaises(ValueError):
+            session.set_dpi(30000)
+        self.assertTrue(session.close())
+        self.assertEqual(fake.dpi, 3200)
+        self.assertEqual(fake.mode, 1)
+        self.assertEqual(errors, [])
+        self.assertTrue(all(index != 12 or fn in (1, 2) for index, fn, _ in fake.requests))
+
+    def test_unconfirmed_dpi_is_never_reported_as_applied(self):
+        fake = FakeHid(dpi=True, refuse_dpi=True)
+        session, ready, _, _ = self.launch(fake)
+        self.assertTrue(ready.wait(1))
+        received = threading.Event()
+        updates = []
+        session.on_hardware = lambda data: (updates.append(data), received.set() if data['kind'] == 'dpi_error' else None)
+        session.set_dpi(1450)
+        self.assertTrue(received.wait(1))
+        self.assertEqual(fake.dpi, 3200)
+        self.assertFalse(any(data['kind'] == 'dpi' for data in updates))
+        self.assertIn('3200', updates[-1]['error'])
 
 
 if __name__ == "__main__":

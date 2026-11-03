@@ -4,7 +4,7 @@ Fecha local: 2 de noviembre de 2026. Windows x64.
 
 ## Ejecutado
 
-- 48 pruebas automatizadas aprobadas: comienzo al pulsar, parada al soltar,
+- 53 pruebas automatizadas aprobadas: comienzo al pulsar, parada al soltar,
   interrupción de esperas de 60 s, alternancia, pulsaciones rápidas, liberaciones
   de otros botones, tres fases de secuencia y limpieza de entradas pendientes.
 - Persistencia, importación inválida y recuperación de bibliotecas dañadas.
@@ -67,3 +67,15 @@ propietario de G HUB. No se implementan operaciones de flash o DFU.
 - Modificar niveles no llama al ajuste del puntero de Windows. Aplicar a Windows
   sí envía el valor elegido (verificado con un emisor simulado).
 - Revisión visual a 1300x900 y 1920x1032. No se declara control físico del DPI.
+
+## Corrección 0.2.3 — G502 HERO físico
+
+- Se consultó 0x2201: 1 sensor, 100–25600 DPI, paso 50, valor actual 3200.
+- Se inició control host temporal, se aplicó 1450 DPI y se confirmó por lectura.
+- Se cerró la sesión: lectura posterior confirmó 3200 DPI y modo original 1.
+- Captura de 20 s recibió pulsación/liberación del índice físico 1. No demuestra
+  todavía G4/G5 ni reproducción completa de macros con pulsaciones del usuario.
+- Pruebas simuladas: rechazo de valores incompatibles, lectura que no confirma
+  una escritura, restauración del DPI y secuencia de conexión antes de asignar.
+- Protocolo consultado: https://github.com/libratbag/libratbag/blob/master/src/hidpp20.c
+  (funciones de la característica 0x2201). Implementación Python propia.

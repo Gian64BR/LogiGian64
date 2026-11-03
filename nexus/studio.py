@@ -536,6 +536,7 @@ class StudioWindow(MainWindow):
         if self.persist():
             self.refresh_macros(macro["id"])
             self.tabs.setCurrentIndex(1)
+            return macro['id']
 
     def load_macro(self, row):
         self._editor_loading = True
@@ -610,6 +611,13 @@ class StudioWindow(MainWindow):
         if self.commit_draft():
             self.status("Macro guardada en el perfil «" + self.store.active["name"] + "»")
             self.tabs.setCurrentIndex(0)
+            pending = getattr(self, '_pending_macro_target', None)
+            if pending and self.device and pending[0] == self.device.id:
+                from .macro_engine import MacroEngine
+                macro = self.current_macro()
+                if macro and MacroEngine.has_actions(macro):
+                    self._pending_macro_target = None
+                    QTimer.singleShot(0, lambda: self.assign_macro_target(pending[1], macro['id']))
 
     def apply_standard_delay(self, *args):
         if self._editor_loading:
@@ -709,9 +717,18 @@ class StudioWindow(MainWindow):
         from .macro_engine import MacroEngine
         macros = [m for m in self.store.active["macros"] if MacroEngine.has_actions(m)]
         if not macros:
-            return self.error("Crea y guarda una macro antes de asignarla a " + slot + ".")
+            self._pending_macro_target = (self.device.id, slot)
+            self.status("Crea una macro con acciones y pulsa Guardar para continuar con " + slot + ".")
+            if not self.new_macro():
+                self._pending_macro_target = None
+            return
         if (self.device.vid, self.device.pid) == ("046D", "C08B") and not (self.g502 and self.g502.ready):
-            return self.error("Activa BOTONES G primero, con G HUB y su agente cerrados. Así se detecta el botón físico y no la acción que G HUB le asignó.")
+            self._pending_binding = (self.device.id, slot, macro_id)
+            if not (self.g502 and self.g502.thread and self.g502.thread.is_alive()):
+                self.activate_g502()
+            if not self.g502:
+                self._pending_binding = None
+            return
         self.stop_all()
         dialog = LearnBindingDialog(self, self.device, macros, slot, macro_id)
         self.learning = dialog

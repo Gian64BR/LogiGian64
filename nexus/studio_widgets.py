@@ -412,12 +412,12 @@ class TargetsOverlay(QWidget):
         left = max(18, art.left() - gap - label_width)
         right = min(self.width() - label_width - 18, art.right() + gap)
         defaults = {
-            "G1": "Clic principal", "G2": "Clic secundario",
+            "G1": "Clic principal\nPROTEGIDO", "G2": "Clic secundario\nPROTEGIDO",
             "G3": "Clic con el botón\ncentral", "G4": "Atrás", "G5": "Adelante",
             "G6": "Cambio de DPI", "G7": "Reducir DPI", "G8": "Aumentar DPI",
             "G9": "Ciclo de perfiles\nintegrados", "G10": "Sin asignar",
             "G11": "Desplazar a la\nizquierda",
-            "Principal": "Clic principal", "Secundario": "Clic secundario",
+            "Principal": "Clic principal\nPROTEGIDO", "Secundario": "Clic secundario\nPROTEGIDO",
             "Central": "Clic con el botón\ncentral", "Lateral 4": "Atrás", "Lateral 5": "Adelante",
         }
         rows = {"G1": (False, .10), "G2": (True, .10),
@@ -557,6 +557,15 @@ class LearnBindingDialog(QDialog):
             self.hint.setText("Botón estándar de Windows listo. Puedes guardar directamente o pulsar otro botón para identificarlo.")
 
     def observe(self, handle, event):
+        from .safety import protected_trigger
+        if protected_trigger(event):
+            # Keep an already identified safe button while clicking Save/Cancel.
+            # The primary click must never become the trigger itself.
+            if self.trigger is None:
+                self.pending_trigger = None
+                self.save_button.setEnabled(False)
+                self.hint.setText("Clic izquierdo y derecho protegidos. Pulsa otro botón del ratón.")
+            return
         g = self.owner.g502
         if self.require_g:
             if not g or handle != g.handle or event["type"] != "gbutton":

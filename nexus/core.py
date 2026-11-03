@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import time
 import uuid
+from .safety import protected_control
 
 MAX_EVENTS = 5000
 
@@ -174,6 +175,8 @@ def validate_profile(value: dict) -> dict:
     if not isinstance(bindings, list) or len(bindings) > 500:
         raise ValueError("Demasiadas asignaciones.")
     for binding in bindings:
+        if isinstance(binding, dict) and protected_control(binding):
+            continue
         if not isinstance(binding, dict) or binding.get("macro_id") not in ids:
             raise ValueError("Una asignación apunta a una macro inexistente.")
         device_id = binding.get("device_id")
@@ -204,6 +207,8 @@ def validate_profile(value: dict) -> dict:
         raise ValueError("Controles desactivados incorrectos.")
     profile["disabled_controls"] = []
     for control in disabled:
+        if isinstance(control, dict) and protected_control(control):
+            continue
         if (not isinstance(control, dict) or not isinstance(control.get("device_id"), str)
                 or control.get("slot") not in ({f"G{n}" for n in range(1, 12)} | {"Principal", "Secundario", "Central", "Lateral 4", "Lateral 5", "Tecla"})
                 or not (control.get("button") is None or (type(control.get("button")) is int and 0 <= control["button"] < 16))):

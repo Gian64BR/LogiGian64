@@ -215,8 +215,9 @@ class G502Session:
 
     def _apply_map(self, buttons):
         desired = list(self.original_map)
+        desired[:2] = [1, 2]
         for bit in buttons:
-            if 0 <= bit < self.count:
+            if 2 <= bit < self.count:
                 desired[bit] = 0
         if self.request(self.spy, 3)[:self.count] == desired:
             return
@@ -274,7 +275,7 @@ class G502Session:
             self.channel.open_path(info["path"])
             self.spy, self.profiles = self.feature(0x8110), self.feature(0x8100)
             self.count = self.request(self.spy, 0)[0]
-            if not 1 <= self.count <= 16:
+            if not 2 <= self.count <= 16:
                 raise OSError("El número de botones comunicado por el ratón no es válido.")
             self.original_mode = self.request(self.profiles, 2)[0]
             if self.original_mode not in (1, 2):
@@ -282,6 +283,8 @@ class G502Session:
             self.original_map = self.request(self.spy, 3)[:self.count]
             if len(self.original_map) != self.count:
                 raise OSError("No se pudo guardar el mapa original de botones.")
+            # Even a previously damaged host map must restore usable clicks.
+            self.original_map[:2] = [1, 2]
             dpi_error = None
             try:
                 self._load_dpi()

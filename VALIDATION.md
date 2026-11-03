@@ -79,3 +79,10 @@ propietario de G HUB. No se implementan operaciones de flash o DFU.
   una escritura, restauración del DPI y secuencia de conexión antes de asignar.
 - Protocolo consultado: https://github.com/libratbag/libratbag/blob/master/src/hidpp20.c
   (funciones de la característica 0x2201). Implementación Python propia.
+
+## Protección de clics 0.2.4
+
+56 pruebas aprobadas. Se verificó que los objetivos principales no permiten
+asignar ni desactivar, que la calibración rechaza los índices 0/1, que los
+perfiles limpian tanto slots protegidos como activadores disfrazados bajo otro
+slot, y que todos los mapas enviados por el controlador conservan [1,2].

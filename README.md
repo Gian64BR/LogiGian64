@@ -1,4 +1,4 @@
-# LogiGian64 0.2.3 — Macros y asignaciones
+# LogiGian64 0.2.4 — Macros y asignaciones
 
 Aplicación independiente para Windows 10/11 x64, con un espacio de trabajo negro,
 panel lateral y asignación de macros sobre la imagen del periférico.
@@ -168,7 +168,7 @@ Windows, abrir en la bandeja**. Abrir manualmente sigue mostrando la ventana.
 El menú también permite pausar asignaciones, detener macros y restaurar el control,
 abrir la carpeta de perfiles y minimizar a la bandeja.
 
-## Sensibilidad y bandeja (0.2.3)
+## Sensibilidad y bandeja (0.2.4)
 
 La pantalla Sensibilidad permite arrastrar cinco niveles o editar sus valores.
 En el **G502 HERO 046D:C08B**, pulsa **Activar control y aplicar DPI**. Una vez
@@ -188,3 +188,11 @@ no se importan automáticamente.
 
 La X oculta la ventana sin detener las macros. Doble clic en el icono de la
 bandeja vuelve a abrirla. Para terminar el programa, elige **Salir** en su menú.
+
+## Protección permanente de los clics principales (0.2.4)
+
+Clic izquierdo y derecho (G1/G2) están protegidos. No se pueden asignar a macros
+ni desactivar, tampoco al calibrar otro objetivo. Los perfiles antiguos y los
+importados omiten sus asignaciones o desactivaciones sin borrar las macros.
+El controlador del G502 mantiene sus entradas nativas 1 y 2, incluso si recibe
+una solicitud antigua para suprimirlas. Los demás botones continúan disponibles.

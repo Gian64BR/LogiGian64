@@ -1125,6 +1125,9 @@ class MainWindow(QMainWindow):
         for binding in self.store.active["bindings"]:
             if not binding["enabled"] or binding["device_id"] != device.id:
                 continue
+            from .safety import protected_control
+            if protected_control(binding):
+                continue
             trigger = binding["trigger"]
             match = trigger["type"] == event["type"]
             if match and event["type"] == "key":

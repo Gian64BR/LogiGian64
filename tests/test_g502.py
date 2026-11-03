@@ -71,6 +71,24 @@ class FakeHid:
 
 
 class G502Tests(unittest.TestCase):
+    def test_primary_buttons_can_never_be_suppressed_in_hardware(self):
+        fake = FakeHid()
+        fake.mapping[:2] = [0, 0]
+        session, ready, errors, _ = self.launch(fake)
+        self.assertTrue(ready.wait(1))
+        session.update_buttons({0, 1, 4})
+        import time
+        deadline = time.monotonic() + 1
+        while fake.mapping[4] != 0 and time.monotonic() < deadline:
+            time.sleep(.01)
+        self.assertEqual(fake.mapping[:2], [1, 2])
+        self.assertEqual(fake.mapping[4], 0)
+        self.assertTrue(session.close())
+        writes = [data for index, fn, data in fake.requests if index == 13 and fn == 4]
+        self.assertTrue(writes)
+        self.assertTrue(all(data[:2] == [1, 2] for data in writes))
+        self.assertEqual(errors, [])
+
     def launch(self, fake, running=False):
         ready = threading.Event()
         errors = []

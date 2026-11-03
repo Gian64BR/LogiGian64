@@ -675,6 +675,10 @@ class StudioWindow(MainWindow):
             self.tabs.setCurrentIndex(0)
 
     def set_control_state(self, slot, disabled):
+        from .safety import PROTECTED_SLOTS
+        if slot in PROTECTED_SLOTS:
+            self.status("Clic izquierdo y derecho protegidos: no se pueden modificar ni desactivar.")
+            return
         if not self.device:
             return
         bindings = self.store.active["bindings"]
@@ -694,6 +698,10 @@ class StudioWindow(MainWindow):
         self.refresh_bindings()
 
     def assign_target(self, slot, macro_id=""):
+        from .safety import PROTECTED_SLOTS
+        if slot in PROTECTED_SLOTS:
+            self.status("Clic izquierdo y derecho protegidos: no admiten macros ni desactivación.")
+            return
         if not macro_id and self.device:
             self.canvas.selected = slot
             self.canvas.overlay.update()
@@ -712,6 +720,10 @@ class StudioWindow(MainWindow):
         self.assign_macro_target(slot, macro_id)
 
     def assign_macro_target(self, slot, macro_id=""):
+        from .safety import PROTECTED_SLOTS
+        if slot in PROTECTED_SLOTS:
+            self.status("Clic izquierdo y derecho protegidos: no admiten macros.")
+            return
         if not self.device or not self.leave_editor():
             return
         from .macro_engine import MacroEngine
@@ -739,6 +751,9 @@ class StudioWindow(MainWindow):
             self.physical_held.clear()
         if accepted and dialog.trigger:
             binding = dialog.binding()
+            from .safety import protected_control
+            if protected_control(binding):
+                return self.error("Clic izquierdo y derecho protegidos. Elige otro botón físico.")
             assignments = self.store.active["bindings"]
             assignments[:] = [b for b in assignments if not (b["device_id"] == self.device.id and
                 (b.get("slot") == slot or b["trigger"] == binding["trigger"]))]

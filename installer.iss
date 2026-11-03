@@ -1,7 +1,7 @@
 [Setup]
 AppId={{9678E6A2-68BD-4BA1-B9B3-463C3E234872}
 AppName=LogiGian64
-AppVersion=0.2.0
+AppVersion=0.2.1
 AppPublisher=Gian64BR
 AppPublisherURL=https://github.com/Gian64BR/LogiGian64
 DefaultDirName={localappdata}\Programs\LogiGian64
@@ -33,7 +33,25 @@ Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion recursesubdirs
-Source: "dist\LogiGian64-0.2-source.zip"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\LogiGian64-0.2.1-source.zip"; DestDir: "{app}"; Flags: ignoreversion
+
+[Registry]
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "LogiGian64"; ValueData: """{app}\LogiGian64.exe"" --startup"; Flags: uninsdeletevalue; Check: EnableStartupByDefault
+
+[Code]
+var
+  FreshInstall: Boolean;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then
+    FreshInstall := not FileExists(ExpandConstant('{app}\LogiGian64.exe'));
+end;
+
+function EnableStartupByDefault: Boolean;
+begin
+  Result := FreshInstall;
+end;
 
 [Icons]
 Name: "{group}\LogiGian64"; Filename: "{app}\LogiGian64.exe"

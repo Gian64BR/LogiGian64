@@ -85,6 +85,7 @@ class BackArrow(QPushButton):
         super().__init__()
         self.setFixedSize(48, 48)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setToolTip("Volver")
         self.setAccessibleName("Volver")
         if callback:
@@ -141,6 +142,55 @@ class MacroTypeButton(QPushButton):
         p.end()
 
 
+class MacroModeButton(QPushButton):
+    """Vector icons stay sharp at any Windows display scale."""
+    def __init__(self, mode):
+        super().__init__()
+        self.mode = mode
+        self.setCheckable(True)
+        self.setAccessibleName(MODES[mode])
+        self.setToolTip(MODES[mode])
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        selected = self.isChecked()
+        color = QColor('#00c6ed' if selected else '#ffffff')
+        p.setPen(QPen(QColor('#00b7ed' if selected else '#454549'), 1))
+        p.setBrush(QColor('#00232a' if selected else '#252527' if self.underMouse() else '#191919'))
+        p.drawRoundedRect(QRectF(.5, .5, self.width()-1, self.height()-1), 3, 3)
+        p.translate(self.width()/2, self.height()/2)
+        p.setPen(QPen(color, 1.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        if self.mode == 'once':
+            p.drawLine(-11, 0, 10, 0)
+            p.drawLine(4, -6, 10, 0)
+            p.drawLine(10, 0, 4, 6)
+        elif self.mode == 'hold':
+            p.drawArc(QRectF(-8, -10, 17, 19), -65*16, 300*16)
+            p.drawLine(4, 9, -1, 7)
+            p.drawLine(4, 9, 3, 13)
+        elif self.mode == 'toggle':
+            p.drawRoundedRect(QRectF(-12, -7, 24, 14), 7, 7)
+            p.setBrush(color)
+            p.drawEllipse(QPointF(5, 0), 5, 5)
+        elif self.mode == 'sequence':
+            for x, y in ((-1, -3), (-6, -5), (-11, -7)):
+                p.setBrush(color if x == -11 else QColor('#191919'))
+                p.drawRoundedRect(QRectF(x, y, 13, 13), 2, 2)
+        else:
+            p.drawRoundedRect(QRectF(-11, -9, 22, 18), 3, 3)
+            p.setPen(QPen(color, 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            p.drawLine(-4, -4, -4, 4)
+            p.drawLine(4, -4, 4, 4)
+        if self.hasFocus():
+            p.setPen(QPen(color, 1, Qt.PenStyle.DotLine))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawRoundedRect(QRectF(-self.width()/2+3, -self.height()/2+3, self.width()-6, self.height()-6), 2, 2)
+        p.end()
+
+
 class RailButton(QPushButton):
     def __init__(self, kind):
         super().__init__()
@@ -161,6 +211,19 @@ class RailButton(QPushButton):
             p.drawRoundedRect(QRectF(13, 13, 22, 22), 2, 2)
             p.drawLine(24, 19, 24, 29)
             p.drawLine(19, 24, 29, 24)
+        elif self.kind == "settings":
+            path = QPainterPath()
+            for n in range(64):
+                angle = n * math.pi / 32
+                radius = 12 if n % 8 in (1, 2, 3, 4) else 9
+                point = QPointF(24 + radius * math.cos(angle), 24 + radius * math.sin(angle))
+                if n == 0:
+                    path.moveTo(point)
+                else:
+                    path.lineTo(point)
+            path.closeSubpath()
+            p.drawPath(path)
+            p.drawEllipse(QPointF(24, 24), 4, 4)
         elif self.kind == "lighting":
             p.drawEllipse(QPointF(24, 24), 5, 5)
             for n in range(8):
@@ -266,18 +329,22 @@ class AssignmentCanvas(QWidget):
             x, y = w * .56 - width / 2, (h - height) / 2 - 10
             self.art.setGeometry(int(x), int(y), int(width), int(height))
             if self.side:
-                coords = {"G4": (.62, .667), "G5": (.534, .519), "G6": (.288, .463)}
+                # Anchors measured against the original G HUB reference captures.
+                coords = {"G4": (.612, .661), "G5": (.526, .509), "G6": (.274, .451)}
             else:
-                coords = {"G1": (.387, .227), "G2": (.798, .227), "G3": (.575, .322),
-                          "G7": (.227, .366), "G8": (.230, .281), "G9": (.600, .514),
-                          "G10": (.647, .322), "G11": (.503, .322)}
+                coords = {"G1": (.392, .226), "G2": (.802, .226), "G3": (.580, .320),
+                          "G7": (.226, .364), "G8": (.231, .280), "G9": (.604, .510),
+                          "G10": (.651, .320), "G11": (.505, .320)}
             if (self.device.vid, self.device.pid) != ("046D", "C08B"):
                 coords = {"Principal": (.3, .2), "Secundario": (.7, .2), "Central": (.5, .35),
                           "Lateral 4": (.06, .5), "Lateral 5": (.06, .36)}
             if knup:
                 coords = ({"Lateral 4": (.58, .56), "Lateral 5": (.44, .59)} if self.side else
                           {"Principal": (.32, .25), "Secundario": (.68, .25), "Central": (.50, .24)})
-            self.points = {slot: QPointF(x + px * width, y + py * height) for slot, (px, py) in coords.items()}
+            # Use the actual integer widget rectangle used to paint the image.
+            rect = self.art.geometry()
+            self.points = {slot: QPointF(rect.x() + px * rect.width(), rect.y() + py * rect.height())
+                           for slot, (px, py) in coords.items()}
         self.update()
         self.overlay.setGeometry(self.rect())
         self.overlay.raise_()
@@ -293,7 +360,7 @@ class AssignmentCanvas(QWidget):
         # Paint the reference before the overlay, not as a sibling that covers it.
         p = QPainter(self)
         p.setPen(QColor("#aaa"))
-        p.drawText(QRectF(30, 12, self.width() - 60, 50), Qt.AlignmentFlag.AlignCenter,
+        p.drawText(QRectF(30, self.height() - 32, self.width() - 60, 26), Qt.AlignmentFlag.AlignCenter,
                    "Arrastra una macro a un botón, o haz clic en un objetivo para asignarla.")
         p.end()
 
@@ -391,7 +458,7 @@ class TargetsOverlay(QWidget):
             p.drawLine(elbow, start)
             active = assigned or slot == self.canvas.selected
             p.setPen(QPen(QColor("#00b7ed" if active else "#aaaaad"), 1.5))
-            p.setBrush(QColor("#00b7ed" if active else "#f4f4f5" if text != "Sin asignar" else "#222326"))
+            p.setBrush(QColor("#00b7ed" if active else "#222326" if slot in ("G4", "G5", "G6", "G7", "G8") or text == "Sin asignar" else "#f4f4f5"))
             p.drawEllipse(pos, 5, 5)
             p.setPen(QColor("#00c6ed" if active else "#f0f0f2"))
             text = p.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, int(rect.width())) if "\n" not in text else text

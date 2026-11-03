@@ -10,12 +10,13 @@ import sys
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--diagnose", action="store_true")
+    parser.add_argument("--startup", action="store_true")
     parser.add_argument("--screenshots", type=Path)
     parser.add_argument("--data-dir", type=Path)
     args = parser.parse_args()
     from nexus import windows as win
     if args.diagnose:
-        result = {"version": "0.2.0", "devices": [d.to_dict() for d in win.enumerate_devices()],
+        result = {"version": "0.2.1", "devices": [d.to_dict() for d in win.enumerate_devices()],
                   "pointer_speed": win.pointer_speed(), "hardware_plugins": ["G502 HERO host buttons (explicit activation)"], "macro_engine": "Windows Raw Input + SendInput + HID++ button stream"}
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
@@ -43,7 +44,10 @@ def main():
             QFontDatabase.addApplicationFont(str(Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts" / filename))
     app.setStyleSheet(STYLE)
     window = MainWindow(store)
-    window.show()
+    if args.startup and window.preferences().value("startup_minimized", False, type=bool):
+        QTimer.singleShot(0, window.to_tray)
+    else:
+        window.show()
     if args.screenshots:
         def capture():
             try:

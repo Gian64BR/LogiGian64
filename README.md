@@ -1,4 +1,4 @@
-# LogiGian64 0.2 — Macros y asignaciones
+# LogiGian64 0.2.1 — Macros y asignaciones
 
 Aplicación independiente para Windows 10/11 x64, con un espacio de trabajo negro,
 panel lateral y asignación de macros sobre la imagen del periférico.
@@ -155,3 +155,14 @@ activador. La siguiente pulsación las libera. No hay bucle ni temporizador; se
 ignoran retardos y liberaciones grabadas. Admite teclas y botones del mouse.
 Detener, pausar asignaciones, cerrar Nexus o sustituir la macro libera las
 salidas pendientes. La prueba manual sigue siendo finita.
+
+
+## Configuración e inicio con Windows
+
+El engranaje inferior izquierdo permite activar o desactivar **Iniciar con Windows**.
+Las instalaciones nuevas lo activan por defecto para el usuario actual; las
+actualizaciones conservan la elección anterior. La desinstalación elimina la entrada.
+Por defecto aparece la ventana al iniciar sesión. Puedes elegir **Al iniciar con
+Windows, abrir en la bandeja**. Abrir manualmente sigue mostrando la ventana.
+El menú también permite pausar asignaciones, detener macros y restaurar el control,
+abrir la carpeta de perfiles y minimizar a la bandeja.

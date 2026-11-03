@@ -4,17 +4,18 @@ import copy
 from pathlib import Path
 import time
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QSettings, QEvent
 from PySide6.QtGui import QColor, QCursor
 from PySide6.QtWidgets import (QWidget, QFrame, QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget,
     QScrollArea, QComboBox, QCheckBox, QLineEdit, QSpinBox, QTableWidget, QAbstractItemView,
     QHeaderView, QListWidget, QInputDialog, QDialog, QMessageBox, QColorDialog, QSlider,
-    QFileDialog, QMenu, QPushButton)
+    QFileDialog, QMenu, QPushButton, QApplication)
 
 from .app import MainWindow, panel
 from .core import MODES, MAX_EVENTS, new_id, validate_macro
 from .widgets import label, button
-from .studio_widgets import HubCard, MacroLibrary, AssignmentCanvas, TypeDialog, LearnBindingDialog, RailButton, BackArrow
+from .studio_widgets import HubCard, MacroLibrary, AssignmentCanvas, TypeDialog, LearnBindingDialog, RailButton, BackArrow, MacroModeButton
+from .timeline import TimelineBlock, TimelineTrack, FlowLayout, timeline_tokens, reorder_tokens
 from .dialogs import AddActionDialog
 from . import windows as win
 
@@ -42,6 +43,15 @@ class StudioWindow(MainWindow):
         self.timeline_pending = False
         super().__init__(store)
         self.setWindowTitle("LogiGian64 0.2 — Macros y asignaciones")
+
+    def eventFilter(self, watched, event):
+        # Raw Input records keys separately. Do not let Qt activate focused
+        # navigation buttons, defaults, menus or shortcuts while recording.
+        if self.recording and event.type() in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease, QEvent.Type.ShortcutOverride, QEvent.Type.Shortcut):
+            if isinstance(watched, QWidget) and (watched is self or self.isAncestorOf(watched)):
+                event.accept()
+                return True
+        return super().eventFilter(watched, event)
 
     def status(self, text):
         super().status(text)
@@ -84,6 +94,16 @@ class StudioWindow(MainWindow):
         outer.addWidget(header)
         self.stack = QStackedWidget()
         outer.addWidget(self.stack, 1)
+        footer = QHBoxLayout()
+        footer.setContentsMargins(14, 0, 14, 6)
+        self.settings_button = RailButton("settings")
+        self.settings_button.setCheckable(False)
+        self.settings_button.setToolTip("Configuración")
+        self.settings_button.setAccessibleName("Configuración")
+        self.settings_button.clicked.connect(self.show_settings)
+        footer.addWidget(self.settings_button)
+        footer.addStretch()
+        outer.addLayout(footer)
         self.build_home()
         self.build_detail()
         super().build_profiles()
@@ -91,6 +111,42 @@ class StudioWindow(MainWindow):
         self.build_editor()
         self.select_nav(0)
         self.status("Selecciona tu periférico · F8 termina grabación · Ctrl+Alt+F12 detiene y restaura el control")
+
+    def preferences(self):
+        return QSettings(str(self.store.directory / "settings.ini"), QSettings.Format.IniFormat)
+
+    def show_settings(self):
+        from .preferences import startup_enabled, set_startup
+        menu = QMenu(self)
+        startup = menu.addAction("Iniciar con Windows")
+        startup.setCheckable(True)
+        try:
+            startup.setChecked(startup_enabled())
+        except OSError as error:
+            self.error(str(error))
+            return
+
+        def toggle_startup(enabled):
+            try:
+                set_startup(enabled)
+                self.status("Inicio con Windows " + ("activado" if enabled else "desactivado"))
+            except OSError as error:
+                self.error("No se pudo cambiar el inicio con Windows: " + str(error))
+        startup.toggled.connect(toggle_startup)
+        minimized = menu.addAction("Al iniciar con Windows, abrir en la bandeja")
+        minimized.setCheckable(True)
+        minimized.setChecked(self.preferences().value("startup_minimized", False, type=bool))
+        minimized.toggled.connect(lambda value: self.preferences().setValue("startup_minimized", value))
+        menu.addSeparator()
+        pause = menu.addAction("Pausar asignaciones")
+        pause.setCheckable(True)
+        pause.setChecked(not self.armed.isChecked())
+        pause.toggled.connect(lambda value: self.armed.setChecked(not value))
+        menu.addAction("Detener macros y restaurar control", self.emergency_stop)
+        menu.addSeparator()
+        menu.addAction("Abrir carpeta de perfiles", self.open_data_folder)
+        menu.addAction("Minimizar a la bandeja", self.to_tray)
+        menu.exec(self.settings_button.mapToGlobal(self.settings_button.rect().topRight()))
 
     def build_home(self):
         page = QWidget()
@@ -279,7 +335,7 @@ class StudioWindow(MainWindow):
         self.mode_buttons = {}
         for mode, icon in (("once", "→"), ("hold", "⟳"), ("toggle", "◉"), ("sequence", "▣"), ("latch", "⏸")):
             self.mode_combo.addItem(MODES[mode], mode)
-            control = button(icon)
+            control = MacroModeButton(mode)
             control.setObjectName("mode")
             control.setCheckable(True)
             control.setToolTip(MODES[mode])
@@ -321,19 +377,19 @@ class StudioWindow(MainWindow):
             self.phase_combo.addItem(text, phase)
         self.phase_combo.currentIndexChanged.connect(self.change_phase)
         el.addWidget(self.phase_combo, 0, Qt.AlignmentFlag.AlignLeft)
-        el.addStretch(1)
         self.timeline_scroll = QScrollArea()
         self.timeline_scroll.setWidgetResizable(True)
         self.timeline_scroll.setMinimumHeight(150)
-        self.timeline_scroll.setMaximumHeight(240)
-        self.timeline_content = QWidget()
+        self.timeline_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.timeline_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.timeline_content = TimelineTrack()
+        self.timeline_content.moved.connect(self.reorder_timeline)
         self.timeline_content.setStyleSheet("background:#000")
-        self.timeline = QHBoxLayout(self.timeline_content)
-        self.timeline.setContentsMargins(8, 35, 8, 30)
-        self.timeline.setSpacing(14)
-        self.timeline.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.timeline = FlowLayout(self.timeline_content)
+        self.timeline.setContentsMargins(8, 16, 8, 16)
+        self.timeline.setSpacing(12)
         self.timeline_scroll.setWidget(self.timeline_content)
-        el.addWidget(self.timeline_scroll)
+        el.addWidget(self.timeline_scroll, 1)
         self.record_button = button("●  GRABAR PULSACIONES", self.toggle_record)
         self.record_button.setStyleSheet("background:#790028; padding:12px 20px")
         controls = QHBoxLayout()
@@ -360,7 +416,6 @@ class StudioWindow(MainWindow):
         edit.addWidget(button("↓", lambda: self.move_step(1)))
         edit.addStretch()
         el.addLayout(edit)
-        el.addStretch(1)
         self.repeats = QSpinBox()
         self.repeats.setRange(1, 100)
         self.repeats.hide()
@@ -728,31 +783,53 @@ class StudioWindow(MainWindow):
             if item.widget():
                 item.widget().hide()
                 item.widget().deleteLater()
-        for row, event in enumerate(self.draft):
+        standard = self.standard_delay.isChecked() or self.mode_combo.currentData() == "latch"
+        tokens = ([(row, "delay" if event["type"] == "wait" else "action", event)
+                   for row, event in enumerate(self.draft)] if standard else timeline_tokens(self.draft))
+        for index, (row, token_kind, event) in enumerate(tokens):
             kind = event["type"]
             if (not self.show_releases.isChecked() or self.mode_combo.currentData() == "latch") and kind in ("key", "mouse") and not event["down"]:
                 continue
             if kind == "key":
-                text = win.key_name(event["vk"], event.get("scan", 0), event.get("extended", False)).upper()
+                text = "BARRA ESPACIADORA" if event["vk"] == 32 else win.key_name(event["vk"], event.get("scan", 0), event.get("extended", False)).upper()
             elif kind == "mouse":
                 text = win.MOUSE_LABELS[event["button"]].upper()
             elif kind == "wheel":
                 text = f"RUEDA {event['delta']:+d}"
-            elif kind == "wait":
-                text = f"{event['delay_ms']} ms"
             elif kind == "text":
-                text = "T  " + event["text"][:25]
+                text = event["text"][:25]
             else:
-                text = "↗  " + Path(event.get("path", "")).name
-            if kind in ("key", "mouse"):
-                text = ("↓  " if event["down"] else "↑  ") + text
-            chip = button(text, lambda checked=False, index=row: self.select_step(index))
-            chip.setToolTip(f"Paso {row + 1} · {event.get('delay_ms', 0)} ms. Clic para editar tiempos o eliminar.")
-            chip.setStyleSheet(f"background:{self.macro_color if kind != 'wait' else '#414154'}; color:white; padding:13px; border-radius:3px")
+                text = Path(event.get("path", "")).name
+            chip = TimelineBlock(index, row, text, self.macro_color,
+                                 delay=event["delay_ms"] if token_kind == "delay" else None,
+                                 down=event.get("down"), draggable=not self.recording)
+            chip.selected.connect(self.select_step)
+            chip.delay_changed.connect(self.edit_timeline_delay)
             self.timeline.addWidget(chip)
-        self.timeline.addWidget(button("+", self.action_menu))
+        plus = button("+", self.action_menu)
+        plus.setFixedSize(48, 48)
+        plus.setStyleSheet("background:#333; font-size:30px; font-weight:300; padding:0; border-radius:0")
+        self.timeline.addWidget(plus)
         if not self.draft:
             self.timeline.addWidget(label("INICIAR AHORA", "muted"))
+
+    def edit_timeline_delay(self, row, value):
+        if self.recording:
+            return
+        self.read_draft()
+        self.draft[row]["delay_ms"] = value
+        self.render_events()
+
+    def reorder_timeline(self, source, destination):
+        if self.recording:
+            return
+        self.read_draft()
+        if self.standard_delay.isChecked() or self.mode_combo.currentData() == "latch":
+            event = self.draft.pop(source)
+            self.draft.insert(destination - (destination > source), event)
+        else:
+            self.draft = reorder_tokens(self.draft, source, destination)
+        self.render_events()
 
     def select_step(self, index):
         self.table.show()
@@ -786,19 +863,40 @@ class StudioWindow(MainWindow):
         self.stop_all()
         self.record_held = {}
         self.recording = True
+        QApplication.instance().installEventFilter(self)
         self.record_start = self.last_record_time = time.monotonic()
         self.record_button.setText("■  FINALIZAR · F8")
         self.record_timer.start()
         self.record_tick()
 
+    def finish_recording(self):
+        QApplication.instance().removeEventFilter(self)
+        super().finish_recording()
+
     def action_menu(self):
-        menu = QMenu(self)
-        actions = {}
-        for title in ("●  Grabar pulsaciones", "Tecla / botón / rueda", "Retardo", "Texto y emojis", "Inicio de aplicación", "Sistema"):
-            actions[menu.addAction(title)] = title
+        if self.recording:
+            return
+        popup = QDialog(self, Qt.WindowType.Popup)
+        popup.setStyleSheet("QDialog {background:#000; border:none} QPushButton {color:white; font-weight:700; text-align:left; padding:10px 12px; border:none; border-radius:4px} QPushButton:hover {border:1px solid white}")
+        layout = QVBoxLayout(popup)
+        layout.setSpacing(8)
+        choice = []
+        for title, color in (("●  Grabar pulsaciones", "#790028"), ("Texto y emojis", "#695000"),
+                             ("Tecla / botón / rueda", "#804000"), ("Inicio de aplicación", "#656565"),
+                             ("Sistema", "#333333"), ("Retardo", "#414154")):
+            control = button(title.upper())
+            control.setStyleSheet(f"background:{color}")
+            control.clicked.connect(lambda checked=False, value=title: (choice.append(value), popup.accept()))
+            layout.addWidget(control, 0, Qt.AlignmentFlag.AlignLeft)
         control = self.sender()
-        chosen = menu.exec(control.mapToGlobal(control.rect().bottomLeft()) if isinstance(control, QWidget) else self.mapToGlobal(self.rect().center()))
-        title = actions.get(chosen, "")
+        popup.adjustSize()
+        position = control.mapToGlobal(control.rect().bottomLeft()) if isinstance(control, QWidget) else self.mapToGlobal(self.rect().center())
+        screen = self.screen().availableGeometry()
+        position.setX(max(screen.left(), min(position.x(), screen.right() - popup.width())))
+        position.setY(max(screen.top(), min(position.y(), screen.bottom() - popup.height())))
+        popup.move(position)
+        popup.exec()
+        title = choice[0] if choice else ""
         if title.startswith("●"):
             return self.toggle_record()
         if title in ("Tecla / botón / rueda", "Retardo"):

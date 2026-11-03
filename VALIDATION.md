@@ -4,7 +4,7 @@ Fecha local: 2 de noviembre de 2026. Windows x64.
 
 ## Ejecutado
 
-- 26 pruebas automatizadas aprobadas: comienzo al pulsar, parada al soltar,
+- 45 pruebas automatizadas aprobadas: comienzo al pulsar, parada al soltar,
   interrupción de esperas de 60 s, alternancia, pulsaciones rápidas, liberaciones
   de otros botones, tres fases de secuencia y limpieza de entradas pendientes.
 - Persistencia, importación inválida y recuperación de bibliotecas dañadas.
@@ -14,7 +14,13 @@ Fecha local: 2 de noviembre de 2026. Windows x64.
   inicio fallido, rechazo de un agente G HUB concurrente y conservación de la
   propiedad de una restauración fallida para poder reintentarla.
 - Revisión de capturas de la interfaz negra, asignación sobre el periférico,
-  imágenes frontal/lateral y línea horizontal de acciones.
+  imágenes frontal/lateral, iconos vectoriales y secuencia en varias filas.
+- Arrastre independiente de teclas y retardos, edición y guardado de milisegundos,
+  ajuste de filas al ancho, desplazamiento vertical e inserción entre filas.
+- Registro de inicio con Windows probado con un registro simulado; eliminación
+  idempotente y comillas en rutas con espacios. La instalación completa y el
+  inicio de sesión de Windows no forman parte de estas pruebas automatizadas.
+- Espacio, Enter y Escape durante grabación no activan la navegación de Qt.
 
 ## Comprobaciones en hardware real (sin modificar su configuración)
 

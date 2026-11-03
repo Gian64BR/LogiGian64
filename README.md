@@ -1,4 +1,4 @@
-# LogiGian64 0.2.8 — Macros y asignaciones
+# LogiGian64 0.2.9 — Macros y asignaciones
 
 Aplicación independiente para Windows 10/11 x64, con un espacio de trabajo negro,
 panel lateral y asignación de macros sobre la imagen del periférico.
@@ -251,7 +251,7 @@ F8 detiene la grabación mientras se graba y funciona como activador fuera de el
 Ctrl+Alt+F12 continúa reservado para la parada de emergencia; F12 sin modificadores
 se puede asignar normalmente. Usar predeterminada quita la macro de la tecla.
 
-## Desactivar una macro de teclado (0.2.8)
+## Desactivar una macro de teclado (0.2.9)
 
 Haz clic derecho sobre F1–F12 y elige **Desactivar macro**. También puedes
 seleccionar la asignación en la lista del panel izquierdo y pulsar el botón
@@ -268,3 +268,7 @@ Identificar modelo permite recordar el nombre al cambiar de puerto USB en este
 equipo. Solo se reutiliza una identificación confirmada cuando hay una única
 unidad coincidente y no existen modelos ambiguos. No se cambia el identificador
 de asignaciones ni se presupone el modelo en otros equipos.
+
+## Corrección 0.2.9
+
+El perfil Redragon K552RGB-1 y su fotografía se incluyen para el descriptor genérico 0C45:5004. No requieren identificación local previa. Los nombres identificados manualmente tienen prioridad; Identificar modelo permite corregir equipos que compartan ese identificador USB.

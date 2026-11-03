@@ -153,3 +153,7 @@ slot, y que todos los mapas enviados por el controlador conservan [1,2].
 - Foto aportada actualizada: 1500x607, archivo conservado byte por byte; encuadre
   de cuerpo (52,78,1396,498) y mismos centros F1–F12. Revisión visual en ventana
   normal y maximizada. Nombre local confirmado Redragon K552RGB-1.
+
+## Versión 0.2.9 — 3 de noviembre de 2026
+
+81 pruebas aprobadas. Se reprodujo el fallo en el ejecutable instalado 0.2.8 usando LOCALAPPDATA vacío y una biblioteca de prueba separada. Se comprobó el ejecutable compilado 0.2.9 en una ventana nativa visible, también con LOCALAPPDATA vacío: tarjeta Redragon K552RGB-1 con fotografía original y panel de asignaciones con la misma fotografía y objetivos F1–F12 alineados. No se cambiaron macros del usuario ni se activó el control del hardware durante esta verificación. Los perfiles locales explícitos mantienen prioridad. El perfil incluido es un valor predeterminado para un descriptor genérico compartido, no una identificación inequívoca de cualquier teclado 0C45:5004.

@@ -144,3 +144,23 @@ class DeviceDetectionTests(unittest.TestCase):
             records['old-port']['remember_ports'] = False
             resolve_identities([unknown], records)
             self.assertEqual(unknown.name, 'USB DEVICE')
+
+    def test_bundled_model_and_photo_without_local_configuration(self):
+        from nexus.device_catalog import apply_catalog
+        from nexus.studio_widgets import reference_image
+        device = keyboard()
+        apply_catalog([device])
+        self.assertEqual(device.name, 'Redragon K552RGB-1')
+        self.assertEqual(Path(reference_image(device)).name, 'redragon-kumara-k552rgb-1.jpg')
+        self.assertTrue(Path(reference_image(device)).is_file())
+
+    def test_catalog_preserves_explicit_models_and_other_hardware(self):
+        from nexus.device_catalog import apply_catalog
+        explicit, other, virtual, named = [keyboard(str(i)) for i in range(4)]
+        explicit.name, explicit.identification = 'My keyboard', 'User confirmed'
+        other.pid = '5005'
+        virtual.virtual = True
+        named.name = 'Different specific model'
+        apply_catalog([explicit, other, virtual, named])
+        self.assertEqual([d.name for d in [explicit,other,virtual,named]],
+                         ['My keyboard','USB DEVICE','USB DEVICE','Different specific model'])

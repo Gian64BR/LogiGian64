@@ -277,6 +277,8 @@ def enumerate_devices(include_virtual=False) -> list[Device]:
             if kind == "mouse":
                 device.kind, device.name = kind, name
     resolve_identities(list(devices.values()), identities)
+    from .device_catalog import apply_catalog
+    apply_catalog(list(devices.values()))
     return sorted(devices.values(), key=lambda d: (d.kind != "mouse", d.name.casefold(), d.id))
 
 

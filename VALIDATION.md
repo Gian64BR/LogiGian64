@@ -106,3 +106,20 @@ slot, y que todos los mapas enviados por el controlador conservan [1,2].
 - Referencias de protocolo consultadas (implementación propia):
   https://openlogi.org/hidpp/features/x8070-color-led-effects
   https://github.com/pwr-Solaar/Solaar/blob/master/lib/logitech_receiver/hidpp20.py
+
+## Detección de teclados 0.2.6
+
+- 69 pruebas aprobadas: recorrido PnP nativo, clasificación virtual basada en
+  ascendencia, conservación de dispositivos desconocidos/USB/Bluetooth, agrupado
+  de varias interfaces sin fusionar unidades distintas y asociación local de
+  modelos con verificación de identidad/tipo/VID/PID. Diálogo de identificación
+  probado mediante interacción controlada.
+- En Windows, C232 tenía como padre LGHUBDEVICE y servicio logi_joy_vir_hid;
+  el teclado real tenía ascendencia USB, VID 0C45 y PID 5004, dos interfaces
+  Raw Input y descriptores genéricos USB DEVICE/SONiX.
+- Después del cambio: dos periféricos físicos (G502 y Redragon confirmado por el
+  usuario); no se deshabilitaron controladores ni se cambiaron IDs de perfiles.
+- La identificación del modelo es local y confirmada por el usuario; los IDs
+  USB genéricos no se usan como catálogo universal de ese modelo.
+- Referencias: Microsoft CM_Locate_DevNodeW, CM_Get_Parent, CM_Get_Device_IDW.
+  https://learn.microsoft.com/en-us/windows/win32/api/cfgmgr32/nf-cfgmgr32-cm_get_parent

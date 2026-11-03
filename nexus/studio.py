@@ -207,6 +207,7 @@ class StudioWindow(MainWindow):
         top.addWidget(self.device_title, 1)
         self.connection_label = label("", "muted")
         top.addWidget(self.connection_label)
+        top.addWidget(button('Identificar modelo', self.identify_device_model))
         layout.addLayout(top)
         body = QHBoxLayout()
         rail = QVBoxLayout()
@@ -425,6 +426,44 @@ class StudioWindow(MainWindow):
         self.canvas.configure(device)
         self.direct_button.setVisible((device.vid, device.pid) == ("046D", "C08B"))
         self.refresh_bindings()
+
+    def identify_device_model(self):
+        if not self.device:
+            return
+        from PySide6.QtWidgets import QFormLayout, QDialogButtonBox
+        from .device_identity import save_identity
+        dialog = QDialog(self)
+        dialog.setWindowTitle('Identificar periférico')
+        dialog.setMinimumWidth(440)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(label(f'USB {self.device.vid}:{self.device.pid}', 'eyebrow'))
+        layout.addWidget(label('Indica el fabricante y modelo de este periférico. Se guardan solo para esta unidad; no cambia sus funciones.', 'muted', True))
+        form = QFormLayout()
+        maker = QLineEdit(self.device.manufacturer)
+        model_name = self.device.name
+        if maker.text() and model_name.casefold().startswith(maker.text().casefold() + ' '):
+            model_name = model_name[len(maker.text()) + 1:]
+        model = QLineEdit(model_name)
+        maker.setMaxLength(80)
+        model.setMaxLength(100)
+        form.addRow('Fabricante', maker)
+        form.addRow('Modelo', model)
+        layout.addLayout(form)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        def save():
+            try:
+                save_identity(self.device, maker.text(), model.text())
+            except (OSError, ValueError) as error:
+                self.error(str(error))
+                return
+            dialog.accept()
+        buttons.accepted.connect(save)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.device_title.setText(self.device.name)
+            self.refresh_devices()
+            self.status('Modelo identificado: ' + self.device.name)
 
     def change_view(self, side):
         self.canvas.side = side

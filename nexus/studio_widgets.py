@@ -62,6 +62,7 @@ class HardwareArt(DeviceArt):
     def __init__(self, device, side=False):
         super().__init__(device.kind, "#00b7ed")
         self.device = device
+        self.setToolTip(f"USB {device.vid}:{device.pid}\n" + (device.identification or 'Nombre comunicado por el dispositivo o Windows'))
         self.side = side
         self.reload()
 
@@ -250,6 +251,7 @@ class HubCard(QFrame):
         self.setObjectName("deviceCard")
         self.setFixedSize(280, 435)
         self.device = device
+        self.setToolTip(f"USB {device.vid}:{device.pid}\n" + (device.identification or 'Nombre comunicado por el dispositivo o Windows'))
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 28, 24, 22)
         title = device.name.replace(" Gaming Mouse", "").replace("Logitech · ", "")

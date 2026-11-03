@@ -14,6 +14,7 @@ UPTR = C.c_size_t
 user32 = C.WinDLL("user32", use_last_error=True)
 kernel32 = C.WinDLL("kernel32", use_last_error=True)
 hid = C.WinDLL("hid", use_last_error=True)
+cfgmgr32 = C.WinDLL('cfgmgr32', use_last_error=True)
 
 
 class RAWINPUTDEVICELIST(C.Structure):
@@ -88,6 +89,13 @@ kernel32.CloseHandle.argtypes = [W.HANDLE]
 for func in (hid.HidD_GetProductString, hid.HidD_GetManufacturerString):
     func.argtypes = [W.HANDLE, W.LPVOID, U32]
     func.restype = W.BOOL
+cfgmgr32.CM_Locate_DevNodeW.argtypes = [C.POINTER(U32), W.LPWSTR, U32]
+cfgmgr32.CM_Get_Parent.argtypes = [C.POINTER(U32), U32, U32]
+cfgmgr32.CM_Get_Device_ID_Size.argtypes = [C.POINTER(U32), U32, U32]
+cfgmgr32.CM_Get_Device_IDW.argtypes = [U32, W.LPWSTR, U32, U32]
+for func in (cfgmgr32.CM_Locate_DevNodeW, cfgmgr32.CM_Get_Parent,
+             cfgmgr32.CM_Get_Device_ID_Size, cfgmgr32.CM_Get_Device_IDW):
+    func.restype = U32
 
 MOUSE_FLAGS = {"left": (0x2, 0x4), "right": (0x8, 0x10), "middle": (0x20, 0x40),
                "x1": (0x80, 0x100), "x2": (0x80, 0x100)}
@@ -165,6 +173,40 @@ def container_id(path: str) -> str:
     return path.upper()
 
 
+def device_ancestry(path):
+    parts = path.replace('\\??\\', '').replace('\\\\?\\', '').split('#')
+    if len(parts) < 3:
+        return []
+    node = U32()
+    if cfgmgr32.CM_Locate_DevNodeW(C.byref(node), '\\'.join(parts[:3]), 0):
+        return []
+    result, visited = [], set()
+    for _ in range(16):
+        if node.value in visited:
+            break
+        visited.add(node.value)
+        size = U32()
+        if cfgmgr32.CM_Get_Device_ID_Size(C.byref(size), node, 0) or size.value > 32767:
+            break
+        buf = C.create_unicode_buffer(size.value + 1)
+        if cfgmgr32.CM_Get_Device_IDW(node, buf, len(buf), 0):
+            break
+        result.append(buf.value.upper())
+        parent = U32()
+        if cfgmgr32.CM_Get_Parent(C.byref(parent), node, 0):
+            break
+        node = parent
+    return result
+
+
+def virtual_ancestry(ancestry):
+    # Do not blacklist a vendor, all ROOT nodes, or every software component:
+    # physical USB/Bluetooth/PS2 devices also have a system root ancestor.
+    prefixes = ('LGHUBDEVICE\\', 'LOGIDEVICE\\', 'ROOT\\LGVIRHID\\',
+                'ROOT\\VIRTUALHID\\', 'ROOT\\VIRTUALKEYBOARD\\', 'ROOT\\VIRTUALMOUSE\\')
+    return any(instance.upper().startswith(prefixes) for instance in ancestry)
+
+
 @dataclass
 class Device:
     id: str
@@ -175,12 +217,15 @@ class Device:
     pid: str
     paths: list[str]
     handles: list[int]
+    virtual: bool = False
+    identification: str = ''
 
     def to_dict(self):
         return asdict(self)
 
 
-def enumerate_devices() -> list[Device]:
+def enumerate_devices(include_virtual=False) -> list[Device]:
+    from .device_identity import load_identities, apply_identity
     # Retry the documented enumeration race when a device arrives during the call.
     for _ in range(4):
         count = U32()
@@ -196,11 +241,15 @@ def enumerate_devices() -> list[Device]:
     else:
         raise OSError("Los dispositivos cambian continuamente. Vuelve a actualizar.")
     devices: dict[str, Device] = {}
+    identities = load_identities()
     for item in array[:result]:
         if item.kind not in (0, 1):
             continue
         path = raw_name(item.handle)
         if not path:
+            continue
+        virtual = virtual_ancestry(device_ancestry(path))
+        if virtual and not include_virtual:
             continue
         kind = "mouse" if item.kind == 0 else "keyboard"
         match = re.search(r"vid_([0-9a-f]{4}).*?pid_([0-9a-f]{4})", path, re.I)
@@ -209,6 +258,8 @@ def enumerate_devices() -> list[Device]:
         brand = {"046D": "Logitech", "1532": "Razer", "1B1C": "Corsair", "1038": "SteelSeries",
                  "0951": "HyperX", "258A": "Dispositivo HID", "05AC": "Apple"}.get(vid, "HID")
         name = product or registry_label(path) or ("Ratón HID" if kind == "mouse" else "Teclado HID")
+        if name.casefold().strip() in ('usb device', 'usb keyboard', 'usb gaming keyboard'):
+            name = f"{'Ratón' if kind == 'mouse' else 'Teclado'} USB · {vid}:{pid}"
         if name.lower() in ("hid-compliant mouse", "mouse compatible con hid", "hid keyboard device", "dispositivo de teclado hid") and vid:
             name = f"{brand} · {'Ratón' if kind == 'mouse' else 'Teclado'} {pid}"
         # User-identified KNUP on this workstation; USB descriptors are generic.
@@ -218,13 +269,15 @@ def enumerate_devices() -> list[Device]:
         # Container ID groups composite collections without merging identical units.
         identity = hashlib.sha256(container_id(path).upper().encode()).hexdigest()[:24]
         if identity not in devices:
-            devices[identity] = Device(identity, name, kind, maker or brand, vid, pid, [path], [int(item.handle)])
+            devices[identity] = Device(identity, name, kind, maker or brand, vid, pid, [path], [int(item.handle)], virtual)
         else:
             device = devices[identity]
             device.paths.append(path)
             device.handles.append(int(item.handle))
             if kind == "mouse":
                 device.kind, device.name = kind, name
+    for device in devices.values():
+        apply_identity(device, identities)
     return sorted(devices.values(), key=lambda d: (d.kind != "mouse", d.name.casefold(), d.id))
 
 

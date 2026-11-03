@@ -1,4 +1,4 @@
-# LogiGian64 0.2.5 — Macros y asignaciones
+# LogiGian64 0.2.6 — Macros y asignaciones
 
 Aplicación independiente para Windows 10/11 x64, con un espacio de trabajo negro,
 panel lateral y asignación de macros sobre la imagen del periférico.
@@ -169,7 +169,7 @@ bandeja también permite abrirla.
 El menú también permite pausar asignaciones, detener macros y restaurar el control,
 abrir la carpeta de perfiles y minimizar a la bandeja.
 
-## Sensibilidad y bandeja (0.2.5)
+## Sensibilidad y bandeja (0.2.6)
 
 La pantalla Sensibilidad permite arrastrar cinco niveles o editar sus valores.
 En el **G502 HERO 046D:C08B**, pulsa **Activar control y aplicar DPI**. Una vez
@@ -190,7 +190,7 @@ no se importan automáticamente.
 La X oculta la ventana sin detener las macros. Doble clic en el icono de la
 bandeja vuelve a abrirla. Para terminar el programa, elige **Salir** en su menú.
 
-## Protección permanente de los clics principales (0.2.5)
+## Protección permanente de los clics principales (0.2.6)
 
 Clic izquierdo y derecho (G1/G2) están protegidos. No se pueden asignar a macros
 ni desactivar, tampoco al calibrar otro objetivo. Los perfiles antiguos y los
@@ -198,7 +198,7 @@ importados omiten sus asignaciones o desactivaciones sin borrar las macros.
 El controlador del G502 mantiene sus entradas nativas 1 y 2, incluso si recibe
 una solicitud antigua para suprimirlas. Los demás botones continúan disponibles.
 
-## Iluminación RGB por zonas (0.2.5)
+## Iluminación RGB por zonas (0.2.6)
 
 En el G502 HERO, abre Iluminación y activa **Control de LogiGian64**. Elige
 Principal o Logotipo y ajusta apagado, color fijo, respiración o ciclo de colores,
@@ -214,3 +214,20 @@ Las imágenes opcionales de G HUB se leen localmente y no se distribuyen.
 
 El inicio automático con Windows siempre se ejecuta solo en la bandeja; abrir
 la aplicación manualmente muestra la ventana.
+
+## Detección e identificación de modelos (0.2.6)
+
+La página de dispositivos muestra periféricos físicos y agrupa sus interfaces
+por Container ID. Las interfaces virtuales de G HUB/Logitech se reconocen por
+su ascendencia PnP y no se muestran como teclados o ratones físicos. No se
+deshabilitan sus controladores. El diagnóstico --diagnose conserva una lista
+separada de interfaces virtuales excluidas. Los dispositivos de procedencia
+desconocida se mantienen visibles.
+
+En Configurar, pulsa **Identificar modelo** para guardar fabricante y modelo de
+una unidad que comunique un nombre genérico. Los datos se guardan localmente en
+%LOCALAPPDATA%\NexusHub\device-identities.json y se comprueban junto con el tipo
+y VID/PID. No se aplican a otros equipos o unidades con los mismos IDs USB.
+Si Windows cambia el Container ID (por ejemplo, al mover un dispositivo sin
+serie USB a otro puerto), puede ser necesario identificar esa unidad de nuevo.
+El nombre no habilita funciones RGB o de firmware que el modelo no soporte.

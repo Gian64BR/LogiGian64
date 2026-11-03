@@ -1111,6 +1111,9 @@ class MainWindow(QMainWindow):
                   next((d for d in self.devices if handle in d.handles), None))
         if not device:
             return
+        from .keyboard_support import function_key
+        if device.kind == 'keyboard' and event['type'] == 'key' and not function_key(event.get('vk')):
+            return
         identity = (device.id, event["type"], event.get("vk"), event.get("button"))
         if event["down"]:
             if identity in self.physical_held:

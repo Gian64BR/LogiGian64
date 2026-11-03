@@ -73,6 +73,8 @@ class LightingPreview(HardwareArt):
         return QColor(round(color.red() * level), round(color.green() * level), round(color.blue() * level))
 
     def paintEvent(self, event):
+        if self.device.kind != 'mouse':
+            return super().paintEvent(event)
         if self.picture.isNull():
             self.color = self.zone_color(1).name()
             return super().paintEvent(event)

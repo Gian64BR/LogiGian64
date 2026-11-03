@@ -7,6 +7,7 @@ from pathlib import Path
 import time
 import uuid
 from .safety import protected_control
+from .keyboard_support import FUNCTION_KEYS, function_key
 
 MAX_EVENTS = 5000
 
@@ -194,19 +195,24 @@ def validate_profile(value: dict) -> dict:
             clean_trigger = {"type": "key", "vk": vk, "mods": sorted(set(mods))}
             if vk == 123 and {"Ctrl", "Alt"}.issubset(mods):
                 raise ValueError("Ctrl+Alt+F12 está reservado para detener las macros.")
+            if not function_key(vk):
+                continue
         elif kind == "mouse" and trigger.get("button") in ("middle", "x1", "x2"):
             clean_trigger = {"type": "mouse", "button": trigger["button"]}
         elif kind == "gbutton" and type(trigger.get("button")) is int and 0 <= trigger["button"] < 16:
             clean_trigger = {"type": "gbutton", "button": trigger["button"]}
         else:
             raise ValueError("Activador incorrecto.")
+        slot = f'F{clean_trigger["vk"] - 111}' if kind == 'key' else str(binding.get('slot', ''))[:40]
         profile["bindings"].append({"device_id": device_id, "trigger": clean_trigger, "macro_id": binding["macro_id"],
-                                    "enabled": bool(binding.get("enabled", True)), "slot": str(binding.get("slot", ""))[:40]})
+                                    "enabled": bool(binding.get("enabled", True)), "slot": slot})
     disabled = value.get("disabled_controls", [])
     if not isinstance(disabled, list) or len(disabled) > 500:
         raise ValueError("Controles desactivados incorrectos.")
     profile["disabled_controls"] = []
     for control in disabled:
+        if isinstance(control, dict) and control.get('slot') in (*FUNCTION_KEYS, 'Tecla'):
+            continue
         if isinstance(control, dict) and protected_control(control):
             continue
         if (not isinstance(control, dict) or not isinstance(control.get("device_id"), str)

@@ -123,3 +123,18 @@ slot, y que todos los mapas enviados por el controlador conservan [1,2].
   USB genéricos no se usan como catálogo universal de ese modelo.
 - Referencias: Microsoft CM_Locate_DevNodeW, CM_Get_Parent, CM_Get_Device_IDW.
   https://learn.microsoft.com/en-us/windows/win32/api/cfgmgr32/nf-cfgmgr32-cm_get_parent
+
+## Foto y teclas de función 0.2.7
+
+- 75 pruebas aprobadas. Foto JPEG original conservada byte por byte; la vista
+  encuadra su cuerpo sin generar un archivo de imagen modificado.
+- Doce objetivos F1–F12 comprobados a 1100x790 y 1920x1032; los clics de sus
+  centros encuentran el objetivo correspondiente. Revisión visual de alineación
+  con las teclas de la fotografía a 1300x900 y 1920x1032.
+- Asignación directa, guardado por dispositivo y ejecución simulada de F1–F12,
+  incluida F8 fuera de grabación y F12 sin modificadores. No se envió entrada
+  al escritorio durante las pruebas del reproductor.
+- Un segundo teclado no activa las macros de la primera unidad. Se rechazan
+  letras/objetivos genéricos y desactivaciones del teclado. Grabación de F8 y
+  emergencia Ctrl+Alt+F12 conservadas. Las acciones grabadas no se restringen.
+- No hay supresión nativa de teclas; sus acciones de Windows permanecen activas.

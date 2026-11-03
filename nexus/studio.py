@@ -251,7 +251,8 @@ class StudioWindow(MainWindow):
         left.addWidget(self.binding_hint)
         self.direct_button = button("ACTIVAR BOTONES G", self.activate_g502, True)
         left.addWidget(self.direct_button)
-        left.addWidget(label("G502: cierra G HUB y su agente antes de activar el control directo. Los cambios del ratón son temporales.", "muted", True))
+        self.device_notice = label("", "muted", True)
+        left.addWidget(self.device_notice)
         body.addWidget(sidebar)
         self.device_panels = QStackedWidget()
         assignments = QWidget()
@@ -263,8 +264,10 @@ class StudioWindow(MainWindow):
         av.addWidget(self.canvas, 1)
         views = QHBoxLayout()
         views.addStretch()
-        views.addWidget(button("VISTA 1", lambda: self.change_view(False)))
-        views.addWidget(button("VISTA 2", lambda: self.change_view(True)))
+        self.front_view_button = button("VISTA 1", lambda: self.change_view(False))
+        self.side_view_button = button("VISTA 2", lambda: self.change_view(True))
+        views.addWidget(self.front_view_button)
+        views.addWidget(self.side_view_button)
         views.addStretch()
         av.addLayout(views)
         self.device_panels.addWidget(assignments)
@@ -425,6 +428,11 @@ class StudioWindow(MainWindow):
         self.lighting_panel.load_device(device)
         self.canvas.configure(device)
         self.direct_button.setVisible((device.vid, device.pid) == ("046D", "C08B"))
+        self.front_view_button.setVisible(device.kind != 'keyboard')
+        self.side_view_button.setVisible(device.kind != 'keyboard')
+        self.device_notice.setText('Solo F1–F12 pueden activar macros. Las demás teclas no se reasignan. La función original de Windows también permanece activa.' if device.kind == 'keyboard' else
+            'G502: cierra G HUB y su agente antes de activar el control directo. Los cambios del ratón son temporales.' if (device.vid, device.pid) == ('046D', 'C08B') else
+            'Los botones genéricos conservan su acción original al ejecutar una macro.')
         self.refresh_bindings()
 
     def identify_device_model(self):
@@ -709,6 +717,10 @@ class StudioWindow(MainWindow):
             self.tabs.setCurrentIndex(0)
 
     def set_control_state(self, slot, disabled):
+        from .keyboard_support import FUNCTION_KEYS
+        if self.device and self.device.kind == 'keyboard' and (slot not in FUNCTION_KEYS or disabled):
+            self.status('En el teclado solo se asignan macros a F1–F12; las teclas no se desactivan.')
+            return
         from .safety import PROTECTED_SLOTS
         if slot in PROTECTED_SLOTS:
             self.status("Clic izquierdo y derecho protegidos: no se pueden modificar ni desactivar.")
@@ -732,6 +744,10 @@ class StudioWindow(MainWindow):
         self.refresh_bindings()
 
     def assign_target(self, slot, macro_id=""):
+        from .keyboard_support import FUNCTION_KEYS
+        if self.device and self.device.kind == 'keyboard' and slot not in FUNCTION_KEYS:
+            self.status('Solo F1–F12 admiten asignación de macros.')
+            return
         from .safety import PROTECTED_SLOTS
         if slot in PROTECTED_SLOTS:
             self.status("Clic izquierdo y derecho protegidos: no admiten macros ni desactivación.")
@@ -741,19 +757,23 @@ class StudioWindow(MainWindow):
             self.canvas.overlay.update()
             menu = QMenu(self)
             default = menu.addAction("Usar predeterminada")
-            disable = menu.addAction("Desactivar")
+            disable = menu.addAction("Desactivar") if self.device.kind != 'keyboard' else None
             menu.addSeparator()
             assign = menu.addAction("Asignar macro…")
             action = menu.exec(QCursor.pos())
             if action == default:
                 return self.set_control_state(slot, False)
-            if action == disable:
+            if disable is not None and action == disable:
                 return self.set_control_state(slot, True)
             if action != assign:
                 return
         self.assign_macro_target(slot, macro_id)
 
     def assign_macro_target(self, slot, macro_id=""):
+        from .keyboard_support import FUNCTION_KEYS
+        if self.device and self.device.kind == 'keyboard' and slot not in FUNCTION_KEYS:
+            self.status('Solo F1–F12 admiten asignación de macros.')
+            return
         from .safety import PROTECTED_SLOTS
         if slot in PROTECTED_SLOTS:
             self.status("Clic izquierdo y derecho protegidos: no admiten macros.")
@@ -788,6 +808,8 @@ class StudioWindow(MainWindow):
             from .safety import protected_control
             if protected_control(binding):
                 return self.error("Clic izquierdo y derecho protegidos. Elige otro botón físico.")
+            if self.device.kind == 'keyboard' and binding['trigger'] != {'type': 'key', 'vk': FUNCTION_KEYS[slot], 'mods': []}:
+                return self.error('La asignación debe corresponder a la tecla de función seleccionada.')
             assignments = self.store.active["bindings"]
             assignments[:] = [b for b in assignments if not (b["device_id"] == self.device.id and
                 (b.get("slot") == slot or b["trigger"] == binding["trigger"]))]

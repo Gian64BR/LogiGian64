@@ -21,3 +21,8 @@ No Qt library source modifications were made.
 - Optional Logitech device photos are read from the user's existing G HUB installation at runtime. They are not part of this distribution; ownership remains with Logitech.
 
 - KNUP KP-V84 top and side illustrations were generated from user-supplied visual references for this project. KNUP branding identifies the depicted device. These illustrations do not imply an official KNUP integration.
+
+- Redragon KUMARA K552RGB-1 keyboard photograph: supplied by the user for this
+  application's device view. The original JPEG is included without modification;
+  the UI frames its keyboard body. Redragon branding identifies the depicted
+  product and does not imply official Redragon firmware or RGB integration.

@@ -42,6 +42,10 @@ QDialog { background: #171719; }
 
 
 def reference_image(device, side=False):
+    from .keyboard_support import is_kumara
+    if is_kumara(device):
+        root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent.parent))
+        return root / 'assets' / 'redragon-kumara-k552rgb-1.jpg'
     if device.kind == "mouse" and (device.vid, device.pid) == ("30FA", "0400"):
         root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
         return root / "assets" / ("knup-kpv84-side.png" if side else "knup-kpv84-top.png")
@@ -71,13 +75,28 @@ class HardwareArt(DeviceArt):
         self.picture = QPixmap(str(path)) if path else QPixmap()
         self.update()
 
+    def source_rect(self):
+        from .keyboard_support import is_kumara
+        if is_kumara(self.device) and not self.picture.isNull():
+            # Render the body area of the original 1500x1500 photograph, like
+            # object-fit in a view. The distributed photograph is unmodified.
+            return QRectF(52, 365, 1396, 498)
+        return QRectF(self.picture.rect())
+
+    def fitted_rect(self):
+        source = self.source_rect()
+        if source.width() <= 0 or source.height() <= 0:
+            return QRectF(self.rect())
+        scale = min(self.width() / source.width(), self.height() / source.height())
+        w, h = source.width() * scale, source.height() * scale
+        return QRectF((self.width() - w) / 2, (self.height() - h) / 2, w, h)
+
     def paintEvent(self, event):
         if self.picture.isNull():
             return super().paintEvent(event)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        fitted = self.picture.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-        p.drawPixmap((self.width() - fitted.width()) // 2, (self.height() - fitted.height()) // 2, fitted)
+        p.drawPixmap(self.fitted_rect(), self.picture, self.source_rect())
         p.end()
 
 
@@ -314,8 +333,19 @@ class AssignmentCanvas(QWidget):
             return
         w, h = self.width(), self.height()
         if self.device.kind == "keyboard":
-            self.art.setGeometry(int(w * .23), int(h * .24), int(w * .55), int(h * .5))
-            self.points = {"Tecla": QPointF(w * .5, h * .5)}
+            from .keyboard_support import is_kumara
+            width = w * .94
+            height = min(h * .56, width / 2.80)
+            self.art.setGeometry(int((w - width) / 2), int((h - height) / 2), int(width), int(height))
+            rect = self.art.fitted_rect().translated(self.art.pos())
+            if is_kumara(self.device):
+                positions = [248, 324, 400, 476, 590, 666, 742, 818, 930, 1007, 1083, 1159]
+                self.points = {f'F{i + 1}': QPointF(rect.x() + (x - 52) / 1396 * rect.width(),
+                                                 rect.y() + 43 / 498 * rect.height())
+                               for i, x in enumerate(positions)}
+            else:
+                self.points = {f'F{i + 1}': QPointF(rect.x() + (.10 + i * .065) * rect.width(),
+                                                  rect.y() + .13 * rect.height()) for i in range(12)}
         else:
             height = min(410, h * .72)
             knup = (self.device.vid, self.device.pid) == ("30FA", "0400")
@@ -408,6 +438,28 @@ class TargetsOverlay(QWidget):
             p.end()
             return
         art = self.canvas.art.geometry()
+        if self.canvas.device.kind == 'keyboard':
+            self.canvas.label_rects = {}
+            font = p.font()
+            font.setBold(True)
+            font.setPixelSize(12)
+            p.setFont(font)
+            for slot, pos in self.canvas.points.items():
+                rect = QRectF(pos.x() - 14, pos.y() - 13, 28, 26)
+                self.canvas.label_rects[slot] = rect
+                assigned = slot in self.canvas.names
+                selected = slot == self.canvas.selected
+                p.setPen(QPen(QColor('#00c6ed' if assigned or selected else '#cccccc'), 1.5))
+                p.setBrush(QColor('#004657' if assigned or selected else '#171719'))
+                p.drawRoundedRect(rect, 3, 3)
+                p.setPen(QColor('white'))
+                p.drawText(rect, Qt.AlignmentFlag.AlignCenter, slot)
+            slot = self.canvas.selected
+            text = f"{slot} · {self.canvas.names.get(slot, 'Función original') }" if slot else 'SOLO F1–F12 · Selecciona una tecla o arrastra una macro'
+            p.setPen(QColor('#00c6ed'))
+            p.drawText(QRectF(15, art.top() - 55, self.width() - 30, 45), Qt.AlignmentFlag.AlignCenter, text)
+            p.end()
+            return
         # Keep callouts anchored to the device, even in a maximized window.
         gap = 42
         label_width = min(180, max(112, (self.width() - art.width()) / 2 - gap - 18))
@@ -557,6 +609,14 @@ class LearnBindingDialog(QDialog):
             self.trigger = {"type": "mouse", "button": standard[slot]}
             self.save_button.setEnabled(True)
             self.hint.setText("Botón estándar de Windows listo. Puedes guardar directamente o pulsar otro botón para identificarlo.")
+        if device.kind == 'keyboard':
+            from .keyboard_support import FUNCTION_KEYS
+            if slot in FUNCTION_KEYS:
+                self.trigger = {'type': 'key', 'vk': FUNCTION_KEYS[slot], 'mods': []}
+                self.save_button.setEnabled(True)
+                self.hint.setText(slot + ' de este teclado está lista. Guarda la asignación; su función original también permanece activa.')
+            else:
+                self.hint.setText('Solo se permite asignar macros a F1–F12.')
 
     def observe(self, handle, event):
         from .safety import protected_trigger
@@ -573,6 +633,13 @@ class LearnBindingDialog(QDialog):
             if not g or handle != g.handle or event["type"] != "gbutton":
                 return
         elif handle not in self.device.handles or event["type"] not in ("key", "mouse"):
+            return
+        if self.device.kind == 'keyboard':
+            from .keyboard_support import FUNCTION_KEYS
+            if event.get('type') != 'key' or event.get('vk') != FUNCTION_KEYS.get(self.slot):
+                return
+            # F1–F12 have known virtual-key codes. Keep the selected key and
+            # unmodified trigger; Save does not require physical calibration.
             return
         if event["type"] == "mouse" and event["button"] not in ("middle", "x1", "x2"):
             self.hint.setText("Este modelo genérico permite asignar los botones central y laterales. Para G1/G2 hace falta un adaptador con supresión física.")

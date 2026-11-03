@@ -1,4 +1,4 @@
-# LogiGian64 0.2.4 — Macros y asignaciones
+# LogiGian64 0.2.5 — Macros y asignaciones
 
 Aplicación independiente para Windows 10/11 x64, con un espacio de trabajo negro,
 panel lateral y asignación de macros sobre la imagen del periférico.
@@ -75,8 +75,8 @@ reintentar; no se informa de restauración exitosa sin confirmación.
   también su acción original. La supresión física requiere un adaptador del modelo.
 - Los botones que no se exponen a Windows necesitan un adaptador como el del G502.
 - DPI físico disponible para G502 HERO 046D:C08B con control directo activo y
-  confirmación de lectura. RGB, polling y escritura en memoria integrada no
-  están implementados. Otros modelos mantienen niveles de referencia.
+  confirmación de lectura. RGB por zonas también disponible en este modelo. Polling y escritura en memoria
+  integrada no están implementados. Otros modelos mantienen niveles de referencia.
 - Los perfiles se seleccionan manualmente. Nexus debe permanecer abierto o en la
   bandeja. Windows puede bloquear SendInput hacia aplicaciones con más privilegios.
 - Los juegos que ignoren entrada sintética no están verificados.
@@ -163,12 +163,13 @@ salidas pendientes. La prueba manual sigue siendo finita.
 El engranaje inferior izquierdo permite activar o desactivar **Iniciar con Windows**.
 Las instalaciones nuevas lo activan por defecto para el usuario actual; las
 actualizaciones conservan la elección anterior. La desinstalación elimina la entrada.
-Por defecto aparece la ventana al iniciar sesión. Puedes elegir **Al iniciar con
-Windows, abrir en la bandeja**. Abrir manualmente sigue mostrando la ventana.
+Al iniciar sesión, se ejecuta directamente en la bandeja sin mostrar la ventana.
+Abrir manualmente sigue mostrando la interfaz. Doble clic en el icono de la
+bandeja también permite abrirla.
 El menú también permite pausar asignaciones, detener macros y restaurar el control,
 abrir la carpeta de perfiles y minimizar a la bandeja.
 
-## Sensibilidad y bandeja (0.2.4)
+## Sensibilidad y bandeja (0.2.5)
 
 La pantalla Sensibilidad permite arrastrar cinco niveles o editar sus valores.
 En el **G502 HERO 046D:C08B**, pulsa **Activar control y aplicar DPI**. Una vez
@@ -189,10 +190,27 @@ no se importan automáticamente.
 La X oculta la ventana sin detener las macros. Doble clic en el icono de la
 bandeja vuelve a abrirla. Para terminar el programa, elige **Salir** en su menú.
 
-## Protección permanente de los clics principales (0.2.4)
+## Protección permanente de los clics principales (0.2.5)
 
 Clic izquierdo y derecho (G1/G2) están protegidos. No se pueden asignar a macros
 ni desactivar, tampoco al calibrar otro objetivo. Los perfiles antiguos y los
 importados omiten sus asignaciones o desactivaciones sin borrar las macros.
 El controlador del G502 mantiene sus entradas nativas 1 y 2, incluso si recibe
 una solicitud antigua para suprimirlas. Los demás botones continúan disponibles.
+
+## Iluminación RGB por zonas (0.2.5)
+
+En el G502 HERO, abre Iluminación y activa **Control de LogiGian64**. Elige
+Principal o Logotipo y ajusta apagado, color fijo, respiración o ciclo de colores,
+color, período (1000–20000 ms) y brillo (0–100%). La vista del ratón se anima
+y las zonas se pueden sincronizar con el mismo efecto. Los ajustes se guardan
+por dispositivo. El color hexadecimal y la paleta permiten elegir el tono.
+
+Los cambios reales se envían por HID++ 0x8070 y se confirman por lectura. Son
+volátiles: al desactivar el control o salir se restauran los efectos anteriores.
+La iluminación no modifica el DPI, los botones ni la memoria integrada. Otros
+modelos disponen de vista previa hasta que tengan un adaptador RGB compatible.
+Las imágenes opcionales de G HUB se leen localmente y no se distribuyen.
+
+El inicio automático con Windows siempre se ejecuta solo en la bandeja; abrir
+la aplicación manualmente muestra la ventana.

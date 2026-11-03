@@ -86,3 +86,23 @@ propietario de G HUB. No se implementan operaciones de flash o DFU.
 asignar ni desactivar, que la calibración rechaza los índices 0/1, que los
 perfiles limpian tanto slots protegidos como activadores disfrazados bajo otro
 slot, y que todos los mapas enviados por el controlador conservan [1,2].
+
+## Iluminación e inicio 0.2.5
+
+- 63 pruebas aprobadas: captura/restauración de efectos y propietario, escritura
+  volátil, conversión de parámetros, validación de valores, rechazo de una lectura
+  que no confirma y conservación del control para reintentar restauraciones.
+- Integración del hilo HID con el panel, persistencia por zonas y vista previa.
+- Prueba física G502: 0x8070 índice 2, zonas 0 Principal y 1 Logotipo; efectos
+  disponibles 0/1/10/3 con ordinales 0/1/2/3. Se aplicaron respiración roja
+  2000 ms 60%, color fijo celeste 45% y ciclo 3000 ms 40% en ambas zonas.
+  Lectura de parámetros y restauración completas confirmadas. No se alteraron
+  botones ni DPI en esta prueba RGB directa.
+- Firmware G502 declara capacidades extendidas cero, pero acepta getZoneEffect;
+  se exige lectura exitosa para capturar/restaurar, sin depender de ese bit.
+- Prueba de inicio real del punto de entrada en procesos aislados: --startup
+  no genera eventos de mostrar ventana, incluso con preferencia antigua false;
+  inicio manual sí la muestra.
+- Referencias de protocolo consultadas (implementación propia):
+  https://openlogi.org/hidpp/features/x8070-color-led-effects
+  https://github.com/pwr-Solaar/Solaar/blob/master/lib/logitech_receiver/hidpp20.py

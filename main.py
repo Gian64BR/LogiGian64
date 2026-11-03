@@ -16,7 +16,7 @@ def main():
     args = parser.parse_args()
     from nexus import windows as win
     if args.diagnose:
-        result = {"version": "0.2.4", "devices": [d.to_dict() for d in win.enumerate_devices()],
+        result = {"version": "0.2.5", "devices": [d.to_dict() for d in win.enumerate_devices()],
                   "pointer_speed": win.pointer_speed(), "hardware_plugins": ["G502 HERO host buttons (explicit activation)"], "macro_engine": "Windows Raw Input + SendInput + HID++ button stream"}
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
@@ -35,7 +35,8 @@ def main():
     lock = QLockFile(str(store.directory / "nexus.lock"))
     lock.setStaleLockTime(0)
     if not lock.tryLock(100):
-        QMessageBox.information(None, "LogiGian64", "LogiGian64 ya está abierto. Busca el icono de LogiGian64 en la bandeja del sistema.")
+        if not args.startup:
+            QMessageBox.information(None, "LogiGian64", "LogiGian64 ya está abierto. Busca el icono de LogiGian64 en la bandeja del sistema.")
         return 0
     app.setStyle("Fusion")
     # Qt's offscreen platform on Windows has no system font database by default.
@@ -45,9 +46,7 @@ def main():
             QFontDatabase.addApplicationFont(str(Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts" / filename))
     app.setStyleSheet(STYLE)
     window = MainWindow(store)
-    if args.startup and window.preferences().value("startup_minimized", False, type=bool):
-        QTimer.singleShot(0, window.to_tray)
-    else:
+    if not args.startup:
         window.show()
     if args.screenshots:
         def capture():

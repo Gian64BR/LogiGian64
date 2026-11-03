@@ -1,11 +1,12 @@
-LogiGian64 0.2.4 — Protección del clic izquierdo y derecho.
+LogiGian64 0.2.5 — Iluminación RGB por zonas.
 
-- **Clic izquierdo y derecho (G1/G2) protegidos**: no admiten asignación de macros ni desactivación. La interfaz los identifica como PROTEGIDOS.
-- La calibración rechaza estos clics incluso si se pulsa uno mientras se asigna otro objetivo.
-- Los perfiles antiguos o importados omiten asignaciones y desactivaciones que afecten a esos controles, conservando las macros y los demás botones.
-- El controlador del G502 impide suprimir los índices físicos 0 y 1 y conserva sus acciones nativas en el mapa temporal y al restaurarlo. La reproducción también ignora asignaciones antiguas que intenten usarlos como activadores.
-- Conserva el DPI físico del G502, las macros para los demás botones, el inicio con Windows y el cierre a la bandeja.
+- Nueva pantalla de iluminación con panel oscuro, pestañas Principal y Logotipo, selector de efectos, color y paleta, velocidad, brillo y vista animada del ratón.
+- Control real para G502 HERO 046D:C08B: apagado, color fijo, respiración y ciclo de colores. Período de 1000–20000 ms y brillo de 0–100%. Permite aplicar el mismo efecto a ambas zonas.
+- Activa **Control de LogiGian64** para enviar los ajustes al ratón. Solo se informa de aplicación cuando la lectura del dispositivo coincide con los parámetros enviados. Al desactivar el control o salir se restauran la iluminación y el propietario anteriores, sin escribir memoria integrada.
+- Preferencias de iluminación guardadas por dispositivo. Otros modelos tienen vista previa, sin afirmar control RGB físico.
+- Inicio con Windows directamente en la bandeja, sin abrir la ventana ni mostrar un aviso si ya está iniciado. La apertura manual sigue mostrando la interfaz.
+- Se mantienen la protección permanente del clic izquierdo y derecho, el DPI físico del G502 y las macros para los demás botones.
 
-56 pruebas automatizadas aprobadas, incluidas las protecciones de interfaz, calibración, perfiles y paquetes del controlador. Antes de actualizar, elige Salir en la bandeja de la versión anterior. Si necesitas detener el control anterior, usa Ctrl+Alt+F12.
+63 pruebas automatizadas aprobadas. Prueba en G502 físico: respiración roja al 60%, color fijo celeste al 45% y ciclo de colores de 3000 ms al 40% confirmados por lectura. Efectos y control originales restaurados y confirmados.
 
-Instalador para Windows 10/11 x64 sin Python. Ejecutable sin firma digital. Código fuente, licencias y SHA256SUMS.txt incluidos.
+Windows 10/11 x64. Instala LogiGian64-Setup.exe después de elegir Salir en la bandeja de la versión anterior. Sin Python. Ejecutable sin firma digital; código, licencias y SHA256SUMS.txt incluidos.

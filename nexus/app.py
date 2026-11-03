@@ -983,6 +983,8 @@ class MainWindow(QMainWindow):
         self.error(message)
 
     def hardware_changed(self, data):
+        if hasattr(self, 'lighting_panel'):
+            self.lighting_panel.hardware_changed(data)
         if hasattr(self, 'sensitivity_panel'):
             self.sensitivity_panel.hardware_changed(data)
         if data['kind'] == 'ready' and self.device and self.device.id == data['device_id']:
@@ -1005,7 +1007,7 @@ class MainWindow(QMainWindow):
         try:
             if ghub_running():
                 answer = QMessageBox.question(self, "Tomar control del G502",
-                    "G HUB tiene el control del ratón. Para usar sus botones físicos, LogiGian64 debe cerrar la interfaz, la bandeja y el agente de G HUB.\n\n"
+                    "G HUB tiene el control del ratón. Para controlar el G502, LogiGian64 debe cerrar la interfaz, la bandeja y el agente de G HUB.\n\n"
                     "Guarda cualquier edición pendiente en G HUB antes de continuar. No se modifican sus perfiles ni el servicio de actualización.\n\n"
                     "¿Cerrar G HUB y activar el control directo?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.No)

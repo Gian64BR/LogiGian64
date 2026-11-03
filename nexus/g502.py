@@ -69,6 +69,8 @@ class G502Session:
         self.dpi_state = None
         self.original_dpi = None
         self.changed_dpi = False
+        self.lighting = None
+        self.lighting_error = None
         self.commands = queue.Queue()
         self.stop_requested = threading.Event()
         self.thread = None
@@ -104,6 +106,15 @@ class G502Session:
 
     def update_buttons(self, buttons):
         self.commands.put(("buttons", set(buttons)))
+
+    def set_lighting(self, configurations):
+        from .lighting_protocol import clean_lighting
+        if not self.ready or not self.lighting:
+            raise OSError('Activa el control del G502 antes de cambiar la iluminación.')
+        self.commands.put(('lighting', {z: clean_lighting(c) for z, c in configurations.items()}))
+
+    def restore_lighting(self):
+        self.commands.put(('lighting_restore', None))
 
     def set_dpi(self, value):
         if not self.ready or not self.dpi_state:
@@ -229,6 +240,8 @@ class G502Session:
 
     def _restore(self):
         failures = []
+        if self.lighting:
+            failures.extend(self.lighting.restore())
         if self.changed_dpi:
             try:
                 value = self.original_dpi
@@ -243,7 +256,7 @@ class G502Session:
             (self.started_spy, self.spy, 2, [], "captura de botones"),
             (self.changed_mode, self.profiles, 1, [self.original_mode or 1], "modo del ratón")):
             if needed:
-                if description == "modo del ratón" and self.changed_dpi:
+                if description == "modo del ratón" and (self.changed_dpi or failures):
                     continue
                 try:
                     self.request(index, fn, data)
@@ -291,6 +304,13 @@ class G502Session:
             except (OSError, TimeoutError) as error:
                 self.dpi_state = None
                 dpi_error = str(error)
+            try:
+                from .lighting_protocol import LightingControl
+                self.lighting = LightingControl(self.request, self.feature(0x8070))
+                self.lighting.load()
+            except (OSError, ValueError) as error:
+                self.lighting = None
+                self.lighting_error = str(error)
             if self.original_mode != 2:
                 self.changed_mode = True
                 self.request(self.profiles, 1, [2])
@@ -302,7 +322,8 @@ class G502Session:
             if self.dpi_state:
                 self.dpi_state['current'] = self._read_dpi()
             self.ready = True
-            self.on_hardware({'kind': 'ready', 'device_id': self.device.id, 'dpi': self.dpi_state, 'dpi_error': dpi_error})
+            self.on_hardware({'kind': 'ready', 'device_id': self.device.id, 'dpi': self.dpi_state, 'dpi_error': dpi_error,
+                              'lighting': self.lighting.zones if self.lighting else None, 'lighting_error': self.lighting_error})
             self.on_status(f"G502 conectado directamente · {self.count} botones físicos · Ctrl+Alt+F12 detiene macros")
             threading.Thread(target=self._monitor, name="G502Ownership", daemon=True).start()
             while not self.stop_requested.is_set():
@@ -315,6 +336,25 @@ class G502Session:
                             self._apply_dpi(value)
                         except (OSError, ValueError) as error:
                             self.on_hardware({'kind': 'dpi_error', 'device_id': self.device.id, 'error': str(error)})
+                    elif command in ('lighting', 'lighting_restore'):
+                        try:
+                            if not self.lighting:
+                                raise OSError('Control RGB no disponible.')
+                            if command == 'lighting':
+                                self.lighting.apply(value)
+                            else:
+                                failures = self.lighting.restore()
+                                if failures:
+                                    raise OSError('; '.join(failures))
+                            self.on_hardware({'kind': command, 'device_id': self.device.id, 'settings': value})
+                        except (OSError, ValueError) as error:
+                            if self.lighting and command == 'lighting':
+                                failures = self.lighting.restore()
+                                if not failures:
+                                    self.on_hardware({'kind': 'lighting_restore', 'device_id': self.device.id})
+                                else:
+                                    error = OSError(str(error) + '; restauración pendiente: ' + '; '.join(failures))
+                            self.on_hardware({'kind': 'lighting_error', 'device_id': self.device.id, 'error': str(error)})
                 except queue.Empty:
                     pass
                 report = self.channel.read(64, 50)

@@ -31,7 +31,7 @@ class Router:
             self.window.stack.setCurrentIndex(1)
             self.window.device_panels.setCurrentIndex({0: 0, 2: 1, 3: 2}.get(index, 0))
         if hasattr(self.window, "assignment_sidebar"):
-            self.window.assignment_sidebar.setVisible(index != 3)
+            self.window.assignment_sidebar.setVisible(index not in (2, 3))
         for key, control in getattr(self.window, "rail_buttons", {}).items():
             control.setChecked(key == (0 if index == 1 else index))
 
@@ -136,10 +136,8 @@ class StudioWindow(MainWindow):
             except OSError as error:
                 self.error("No se pudo cambiar el inicio con Windows: " + str(error))
         startup.toggled.connect(toggle_startup)
-        minimized = menu.addAction("Al iniciar con Windows, abrir en la bandeja")
-        minimized.setCheckable(True)
-        minimized.setChecked(self.preferences().value("startup_minimized", False, type=bool))
-        minimized.toggled.connect(lambda value: self.preferences().setValue("startup_minimized", value))
+        minimized = menu.addAction("Inicio con Windows: solo en la bandeja")
+        minimized.setEnabled(False)
         menu.addSeparator()
         pause = menu.addAction("Pausar asignaciones")
         pause.setCheckable(True)
@@ -269,13 +267,9 @@ class StudioWindow(MainWindow):
         views.addStretch()
         av.addLayout(views)
         self.device_panels.addWidget(assignments)
-        lighting = QWidget()
-        lv = QVBoxLayout(lighting)
-        lv.addStretch()
-        lv.addWidget(label("Iluminación del dispositivo", "title"))
-        lv.addWidget(label("El control RGB físico todavía no está implementado. Esta pantalla no envía colores al ratón.", "muted", True))
-        lv.addStretch()
-        self.device_panels.addWidget(lighting)
+        from .lighting import LightingPanel
+        self.lighting_panel = LightingPanel(self)
+        self.device_panels.addWidget(self.lighting_panel)
         from .sensitivity import SensitivityPanel
         self.sensitivity_panel = SensitivityPanel(self)
         self.speed_slider = self.sensitivity_panel.speed_slider
@@ -427,6 +421,7 @@ class StudioWindow(MainWindow):
 
     def open_device(self, device):
         super().open_device(device)
+        self.lighting_panel.load_device(device)
         self.canvas.configure(device)
         self.direct_button.setVisible((device.vid, device.pid) == ("046D", "C08B"))
         self.refresh_bindings()

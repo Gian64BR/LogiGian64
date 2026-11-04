@@ -25,6 +25,30 @@ class RAWINPUTDEVICE(C.Structure):
     _fields_ = [("usage_page", U16), ("usage", U16), ("flags", U32), ("target", W.HWND)]
 
 
+class RID_MOUSE_INFO(C.Structure):
+    _fields_ = [('id', U32), ('buttons', U32), ('sample_rate', U32), ('horizontal_wheel', W.BOOL)]
+
+
+class RID_INFO_UNION(C.Union):
+    _fields_ = [('mouse', RID_MOUSE_INFO), ('keyboard', U32 * 6), ('hid', U32 * 4)]
+
+
+class RID_DEVICE_INFO(C.Structure):
+    _fields_ = [('size', U32), ('kind', U32), ('data', RID_INFO_UNION)]
+
+
+def mouse_button_count(handle):
+    """Per-device capability reported by its driver; None means unavailable."""
+    info = RID_DEVICE_INFO()
+    info.size = C.sizeof(info)
+    size = U32(C.sizeof(info))
+    result = user32.GetRawInputDeviceInfoW(handle, 0x2000000B, C.byref(info), C.byref(size))
+    if result == 0xFFFFFFFF or info.kind != 0:
+        return None
+    count = int(info.data.mouse.buttons)
+    return count if 1 <= count <= 32 else None
+
+
 class RAWINPUTHEADER(C.Structure):
     _fields_ = [("kind", U32), ("size", U32), ("device", W.HANDLE), ("wparam", UPTR)]
 
@@ -137,8 +161,14 @@ def device_strings(path: str) -> tuple[str, str]:
     try:
         values = []
         for func in (hid.HidD_GetProductString, hid.HidD_GetManufacturerString):
-            buf = C.create_unicode_buffer(256)
-            values.append(buf.value if func(handle, buf, C.sizeof(buf)) else "")
+            readings = []
+            for _ in range(2):
+                buf = C.create_unicode_buffer(256)
+                readings.append(buf.value.strip() if func(handle, buf, C.sizeof(buf)) else '')
+            # Some inexpensive controllers intermittently return descriptor bytes
+            # as strings. Do not display unstable names or embedded controls.
+            text = readings[0] if readings[0] == readings[1] else ''
+            values.append(text if not any(ord(c) < 32 for c in text) else '')
         return tuple(values)
     finally:
         kernel32.CloseHandle(handle)
@@ -219,6 +249,7 @@ class Device:
     handles: list[int]
     virtual: bool = False
     identification: str = ''
+    button_count: int | None = None
 
     def to_dict(self):
         return asdict(self)
@@ -276,6 +307,10 @@ def enumerate_devices(include_virtual=False) -> list[Device]:
             device.handles.append(int(item.handle))
             if kind == "mouse":
                 device.kind, device.name = kind, name
+        if kind == 'mouse':
+            count = mouse_button_count(item.handle)
+            previous = devices[identity].button_count
+            devices[identity].button_count = max(previous or 0, count or 0) or None
     resolve_identities(list(devices.values()), identities)
     from .device_catalog import apply_catalog
     apply_catalog(list(devices.values()))

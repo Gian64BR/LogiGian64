@@ -4,8 +4,8 @@ import sys
 import math
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QRectF, QPointF, QMimeData, QPoint
-from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QDrag, QPainterPath
+from PySide6.QtCore import Qt, Signal, QRectF, QPointF, QMimeData, QPoint, QSize
+from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QDrag, QPainterPath, QIcon, QRegion
 from PySide6.QtWidgets import (QWidget, QListWidget, QFrame, QLabel, QVBoxLayout, QHBoxLayout,
                               QPushButton, QDialog, QDialogButtonBox, QComboBox)
 from .widgets import DeviceArt, label, button, STYLE
@@ -38,7 +38,102 @@ QHeaderView::section { background: #282828; color: #aaa; }
 QCheckBox::indicator:checked { background: #00b7ed; border: 3px solid #194957; }
 QStatusBar { background: #080808; color: #96969b; border-top: 1px solid #222; }
 QDialog { background: #171719; }
+QListWidget#profileList::item { padding: 0; border: none; background: transparent; }
+QListWidget#profileList::item:selected { background: transparent; }
+QFrame#profileCard { background: #202629; border: 1px solid #343f42; border-radius: 16px; }
+QFrame#profileCard:hover { border-color: #568d88; }
+QFrame#profileCard[selected="true"] { background: #173e3c; border: 1px solid #62d7c8; }
+QFrame#profileCard QLabel { background: transparent; }
+QPushButton#profileAction { background: transparent; border: none; border-radius: 10px; padding: 0; }
+QPushButton#profileAction:hover { background: #315551; }
 """
+
+
+class ConnectionLabel(QLabel):
+    """Color only the status dot, keeping the connection text gray."""
+    def __init__(self, connected=True):
+        super().__init__()
+        self.setObjectName('muted')
+        self.setText('● CONECTADO' if connected else '○ DESCONECTADO')
+
+    def setText(self, text):
+        connected = 'DESCONECTADO' not in text
+        status = 'CONECTADO' if connected else 'DESCONECTADO'
+        color = '#49d68a' if connected else '#a2a2a6'
+        self.setAccessibleName(status)
+        super().setText(f'<span style="color:{color}">●</span>&nbsp; <span style="color:#a2a2a6">{status}</span>')
+
+
+def profile_action_icon(kind):
+    picture = QPixmap(24, 24)
+    picture.fill(Qt.GlobalColor.transparent)
+    p = QPainter(picture)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(QPen(QColor('#d5eee8'), 1.7, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+    if kind == 'rename':
+        path = QPainterPath(QPointF(5, 15))
+        for point in [(15, 5), (19, 9), (9, 19), (4, 20), (5, 15)]:
+            path.lineTo(*point)
+        p.drawPath(path)
+        p.drawLine(13, 7, 17, 11)
+    else:
+        p.drawLine(5, 7, 19, 7)
+        p.drawLine(9, 4, 15, 4)
+        p.drawLine(7, 7, 8, 20)
+        p.drawLine(8, 20, 16, 20)
+        p.drawLine(16, 20, 17, 7)
+        p.drawLine(10, 10, 10, 17)
+        p.drawLine(14, 10, 14, 17)
+    p.end()
+    return QIcon(picture)
+
+
+class ProfileCard(QFrame):
+    selected = Signal()
+    activated = Signal()
+    rename = Signal()
+    remove = Signal()
+
+    def __init__(self, profile, active=False):
+        super().__init__()
+        self.setObjectName('profileCard')
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(22, 15, 16, 15)
+        text = QVBoxLayout()
+        title = label(profile['name'], 'sectionTitle')
+        title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        text.addWidget(title)
+        description = label(f"{len(profile['macros'])} macros" + ('  ·  ACTIVO' if active else ''), 'muted')
+        description.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        text.addWidget(description)
+        row.addLayout(text, 1)
+        for kind, tip, signal in [('rename', 'Renombrar perfil', self.rename), ('delete', 'Eliminar perfil', self.remove)]:
+            control = QPushButton()
+            control.setObjectName('profileAction')
+            control.setIcon(profile_action_icon(kind))
+            control.setIconSize(QSize(24, 24))
+            control.setFixedSize(40, 40)
+            control.setToolTip(tip)
+            control.setAccessibleName(tip + ' ' + profile['name'])
+            control.clicked.connect(signal.emit)
+            row.addWidget(control)
+
+    def set_selected(self, selected):
+        self.setProperty('selected', selected)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.selected.emit()
+        super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.activated.emit()
+        super().mouseDoubleClickEvent(event)
 
 
 def reference_image(device, side=False):
@@ -52,6 +147,9 @@ def reference_image(device, side=False):
     # Read an optional image from the user's existing installation at runtime.
     # These proprietary files are never copied into the source or release.
     if (device.vid, device.pid) != ("046D", "C08B"):
+        if device.kind == 'mouse':
+            root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent.parent))
+            return root / 'assets' / 'generic-mouse.png'
         return None
     root = Path("C:/ProgramData/LGHUB/depots")
     name = "side_hero.png" if side else "front_hero.png"
@@ -73,6 +171,7 @@ class HardwareArt(DeviceArt):
     def reload(self):
         path = reference_image(self.device, self.side)
         self.picture = QPixmap(str(path)) if path else QPixmap()
+        self.content_rect = QRectF(QRegion(self.picture.mask()).boundingRect()) if not self.picture.isNull() else QRectF()
         self.update()
 
     def source_rect(self):
@@ -80,6 +179,8 @@ class HardwareArt(DeviceArt):
         if is_kumara(self.device) and not self.picture.isNull():
             # Frame the original photograph in the view without editing it.
             return QRectF(52, 78 if self.picture.height() < 1000 else 365, 1396, 498)
+        if self.device.kind == 'mouse' and (self.device.vid, self.device.pid) not in [('046D', 'C08B'), ('30FA', '0400')] and not self.picture.isNull():
+            return self.content_rect
         return QRectF(self.picture.rect())
 
     def fitted_rect(self):
@@ -92,10 +193,37 @@ class HardwareArt(DeviceArt):
 
     def paintEvent(self, event):
         if self.picture.isNull():
+            if self.device.kind == 'mouse' and (self.device.vid, self.device.pid) != ('046D', 'C08B'):
+                return self.paint_generic_mouse()
             return super().paintEvent(event)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         p.drawPixmap(self.fitted_rect(), self.picture, self.source_rect())
+        p.end()
+
+    def paint_generic_mouse(self):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.translate(self.width() / 2, self.height() / 2)
+        scale = min(self.width() / 170, self.height() / 320)
+        p.scale(scale, scale)
+        p.setPen(QPen(QColor('#555c62'), 2))
+        p.drawLine(0, -160, 0, -132)
+        p.setBrush(QColor('#30353a'))
+        p.drawRoundedRect(QRectF(-70, -132, 140, 268), 65, 65)
+        p.setPen(QPen(QColor('#14181b'), 2))
+        p.drawLine(0, -130, 0, -25)
+        p.drawLine(-67, -25, 67, -25)
+        p.setBrush(QColor('#111518'))
+        p.drawRoundedRect(QRectF(-8, -90, 16, 38), 6, 6)
+        p.setPen(QPen(QColor('#8b959b'), 1))
+        for y in range(-84, -56, 5):
+            p.drawLine(-4, y, 4, y)
+        count = self.device.button_count or 2
+        if count >= 4:
+            p.drawRoundedRect(QRectF(-73, 3, 7, 24), 3, 3)
+        if count >= 5:
+            p.drawRoundedRect(QRectF(-73, 34, 7, 24), 3, 3)
         p.end()
 
 
@@ -276,7 +404,10 @@ class HubCard(QFrame):
         title_label = label(title, "sectionTitle", True)
         title_label.setMinimumHeight(48)
         layout.addWidget(title_label)
-        layout.addWidget(label("●  CONECTADO", "muted"))
+        layout.addWidget(ConnectionLabel())
+        if device.kind == 'mouse':
+            text = f'{device.button_count} botones informados por Windows' if device.button_count else 'Cantidad de botones no disponible'
+            layout.addWidget(label(text, 'muted', True))
         art = HardwareArt(device)
         art.setMinimumSize(160, 240)
         layout.addWidget(art, 1)
@@ -319,6 +450,10 @@ class AssignmentCanvas(QWidget):
         self.overlay = TargetsOverlay(self)
 
     def configure(self, device, names=None):
+        if not self.device or self.device.id != device.id:
+            self.side = False
+            self.selected = ''
+        self.label_rects = {}
         self.device = device
         self.names = names or {}
         if self.art:
@@ -360,6 +495,9 @@ class AssignmentCanvas(QWidget):
                     width = height * ratio
             else:
                 width = height * (936 / 2700 if self.side else 1391 / 2700)
+                if not self.art.picture.isNull() and (self.device.vid, self.device.pid) != ('046D', 'C08B'):
+                    source = self.art.source_rect()
+                    width = height * source.width() / source.height()
             x, y = w * .56 - width / 2, (h - height) / 2 - 10
             self.art.setGeometry(int(x), int(y), int(width), int(height))
             if self.side:
@@ -370,8 +508,14 @@ class AssignmentCanvas(QWidget):
                           "G7": (.226, .364), "G8": (.231, .280), "G9": (.604, .510),
                           "G10": (.651, .320), "G11": (.505, .320)}
             if (self.device.vid, self.device.pid) != ("046D", "C08B"):
-                coords = {"Principal": (.3, .2), "Secundario": (.7, .2), "Central": (.5, .35),
-                          "Lateral 4": (.06, .5), "Lateral 5": (.06, .36)}
+                coords = {"Principal": (.3, .2), "Secundario": (.7, .2)}
+                count = self.device.button_count or 2
+                if count >= 3:
+                    coords['Central'] = (.5, .28)
+                if count >= 4:
+                    coords['Lateral 4'] = (.06, .5)
+                if count >= 5:
+                    coords['Lateral 5'] = (.06, .36)
             if knup:
                 coords = ({"Lateral 4": (.58, .56), "Lateral 5": (.44, .59)} if self.side else
                           {"Principal": (.32, .25), "Secundario": (.68, .25), "Central": (.50, .24)})

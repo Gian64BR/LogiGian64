@@ -164,3 +164,51 @@ class DeviceDetectionTests(unittest.TestCase):
         apply_catalog([explicit, other, virtual, named])
         self.assertEqual([d.name for d in [explicit,other,virtual,named]],
                          ['My keyboard','USB DEVICE','USB DEVICE','Different specific model'])
+
+    def test_mouse_buttons_are_read_per_raw_input_handle(self):
+        import ctypes
+        def info(handle, command, pointer, size):
+            self.assertEqual(handle, 123)
+            self.assertEqual(command, 0x2000000B)
+            self.assertEqual(size._obj.value, 32)
+            self.assertEqual(pointer._obj.size, 32)
+            pointer._obj.kind = 0
+            pointer._obj.data.mouse.buttons = 3
+            return 32
+        with patch.object(win.user32, 'GetRawInputDeviceInfoW', side_effect=info):
+            self.assertEqual(win.mouse_button_count(123), 3)
+        with patch.object(win.user32, 'GetRawInputDeviceInfoW', return_value=0xFFFFFFFF):
+            self.assertIsNone(win.mouse_button_count(123))
+
+    def test_generic_mouse_targets_follow_reported_buttons_and_reset_view(self):
+        from nexus.studio_widgets import AssignmentCanvas, reference_image
+        app = QApplication.instance() or QApplication([])
+        canvas = AssignmentCanvas()
+        device = win.Device('simple', 'USB OPTICAL MOUSE', 'mouse', 'HID', '0000', '3825', [], [], button_count=3)
+        canvas.configure(device)
+        self.assertEqual(set(canvas.points), {'Principal','Secundario','Central'})
+        self.assertEqual(reference_image(device).name, 'generic-mouse.png')
+        device.button_count = 5
+        canvas.configure(device)
+        self.assertEqual(set(canvas.points), {'Principal','Secundario','Central','Lateral 4','Lateral 5'})
+        canvas.side = True
+        simple = win.Device('new', 'Other mouse', 'mouse', 'HID', '1234', '0001', [], [], button_count=2)
+        canvas.configure(simple)
+        self.assertFalse(canvas.side)
+        self.assertEqual(set(canvas.points), {'Principal','Secundario'})
+        simple.button_count = None
+        canvas.configure(simple)
+        self.assertEqual(set(canvas.points), {'Principal','Secundario'})
+
+    def test_basic_mouse_does_not_accept_nonexistent_side_macro_target(self):
+        app = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as directory:
+            window = StudioWindow(Store(Path(directory)))
+            self.addCleanup(window.exit_application)
+            device = win.Device('simple', 'USB OPTICAL MOUSE', 'mouse', 'HID', '0000', '3825', [], [], button_count=3)
+            window.open_device(device)
+            with patch.object(window, 'new_macro') as create:
+                window.assign_macro_target('Lateral 4')
+                create.assert_not_called()
+            self.assertTrue(window.direct_button.isHidden())
+            self.assertTrue(window.side_view_button.isHidden())

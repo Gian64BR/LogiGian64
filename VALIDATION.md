@@ -157,3 +157,9 @@ slot, y que todos los mapas enviados por el controlador conservan [1,2].
 ## Versión 0.2.9 — 3 de noviembre de 2026
 
 81 pruebas aprobadas. Se reprodujo el fallo en el ejecutable instalado 0.2.8 usando LOCALAPPDATA vacío y una biblioteca de prueba separada. Se comprobó el ejecutable compilado 0.2.9 en una ventana nativa visible, también con LOCALAPPDATA vacío: tarjeta Redragon K552RGB-1 con fotografía original y panel de asignaciones con la misma fotografía y objetivos F1–F12 alineados. No se cambiaron macros del usuario ni se activó el control del hardware durante esta verificación. Los perfiles locales explícitos mantienen prioridad. El perfil incluido es un valor predeterminado para un descriptor genérico compartido, no una identificación inequívoca de cualquier teclado 0C45:5004.
+
+## Versión 0.2.10 — 3 de noviembre de 2026
+
+84 pruebas aprobadas, incluidas lectura RIDI_DEVICEINFO por handle, error de consulta sin inventar capacidades, objetivos para ratones genéricos de 2/3/5 botones, cambio de dispositivo y rechazo de botón lateral inexistente. El mouse físico USB 0000:3825 informa tres botones. Se verificó en ventana nativa desde el código fuente el mouse con su imagen genérica, tres objetivos y clics protegidos; el usuario aprobó el aspecto y funcionamiento local. Perfiles: comprobados selección turquesa, botones internos de renombrar/borrar y cancelación de eliminación en biblioteca de prueba separada. Los recursos y los cambios no incluyen bibliotecas personales.
+
+El ejecutable 0.2.10 terminó su prueba aislada con código 0 y generó capturas de Dispositivos, Asignaciones y Macros. Se comprobó dentro del archivo compilado la igualdad exacta de generic-mouse.png, device-models.json y la fotografía del Redragon respecto del código fuente.

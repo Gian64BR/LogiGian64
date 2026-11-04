@@ -13,15 +13,16 @@ from nexus.studio_widgets import STYLE
 class ApplicationTests(unittest.TestCase):
     def test_empty_assignment_starts_macro_creation_instead_of_error(self):
         from unittest.mock import patch
+        from nexus.windows import Device
         with tempfile.TemporaryDirectory() as directory:
             window = MainWindow(Store(Path(directory)))
             self.addCleanup(window.exit_application)
-            window.open_device(window.devices[0])
+            window.open_device(Device('test-mouse', 'Mouse', 'mouse', 'HID', '1234', '5678', [], [], button_count=5))
             with patch.object(window, 'new_macro', return_value='new') as create, patch.object(window, 'error') as error:
-                window.assign_macro_target('G4')
+                window.assign_macro_target('Lateral 4')
                 create.assert_called_once()
                 error.assert_not_called()
-                self.assertEqual(window._pending_macro_target, (window.device.id, 'G4'))
+                self.assertEqual(window._pending_macro_target, (window.device.id, 'Lateral 4'))
 
     def test_g502_assignment_connects_then_resumes_calibration(self):
         from unittest.mock import patch

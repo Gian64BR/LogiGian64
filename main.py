@@ -16,7 +16,7 @@ def main():
     args = parser.parse_args()
     from nexus import windows as win
     if args.diagnose:
-        result = {"version": "0.2.9", "devices": [d.to_dict() for d in win.enumerate_devices()],
+        result = {"version": "0.2.10", "devices": [d.to_dict() for d in win.enumerate_devices()],
                   "pointer_speed": win.pointer_speed(), "hardware_plugins": ["G502 HERO host buttons (explicit activation)"], "macro_engine": "Windows Raw Input + SendInput + HID++ button stream",
                   "excluded_virtual_devices": [d.to_dict() for d in win.enumerate_devices(include_virtual=True) if d.virtual]}
         print(json.dumps(result, ensure_ascii=False, indent=2))

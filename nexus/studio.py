@@ -4,12 +4,12 @@ import copy
 from pathlib import Path
 import time
 
-from PySide6.QtCore import Qt, QTimer, QSettings, QEvent
+from PySide6.QtCore import Qt, QTimer, QSettings, QEvent, QSize
 from PySide6.QtGui import QColor, QCursor
 from PySide6.QtWidgets import (QWidget, QFrame, QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget,
     QScrollArea, QComboBox, QCheckBox, QLineEdit, QSpinBox, QTableWidget, QAbstractItemView,
     QHeaderView, QListWidget, QInputDialog, QDialog, QMessageBox, QColorDialog, QSlider,
-    QFileDialog, QMenu, QPushButton, QApplication)
+    QFileDialog, QMenu, QPushButton, QApplication, QListWidgetItem)
 
 from .app import MainWindow, panel
 from .core import MODES, MAX_EVENTS, new_id, validate_macro
@@ -18,6 +18,7 @@ from .studio_widgets import HubCard, MacroLibrary, AssignmentCanvas, TypeDialog,
 from .timeline import TimelineBlock, TimelineTrack, FlowLayout, timeline_tokens, reorder_tokens
 from .dialogs import AddActionDialog
 from . import windows as win
+from .studio_widgets import ConnectionLabel, ProfileCard
 
 
 class Router:
@@ -109,11 +110,59 @@ class StudioWindow(MainWindow):
         outer.addLayout(footer)
         self.build_home()
         self.build_detail()
-        super().build_profiles()
+        self.build_profiles()
         self.build_help()
         self.build_editor()
         self.select_nav(0)
         self.status("Selecciona tu periférico · F8 termina grabación · Ctrl+Alt+F12 detiene y restaura el control")
+
+    def build_profiles(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(36, 30, 36, 30)
+        layout.addWidget(label('TU BIBLIOTECA LOCAL', 'eyebrow'))
+        layout.addWidget(label('Perfiles', 'title'))
+        layout.addWidget(label('Selecciona un perfil. Haz doble clic para activarlo.', 'muted'))
+        self.profile_list = QListWidget()
+        self.profile_list.setObjectName('profileList')
+        self.profile_list.setSpacing(7)
+        self.profile_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.profile_list.currentRowChanged.connect(self.update_profile_cards)
+        self.profile_list.itemDoubleClicked.connect(lambda: self.activate_profile())
+        layout.addWidget(self.profile_list, 1)
+        actions = QHBoxLayout()
+        for text, callback, primary in [('+ Nuevo', self.add_profile, True), ('Activar', self.activate_profile, False),
+                ('Duplicar', self.duplicate_profile, False), ('Importar JSON', self.import_profile, False),
+                ('Exportar JSON', self.export_profile, False)]:
+            actions.addWidget(button(text, callback, primary))
+        actions.addStretch()
+        layout.addLayout(actions)
+        self.stack.addWidget(page)
+
+    def refresh_profiles(self):
+        super().refresh_profiles()
+        for row, profile in enumerate(self.store.profiles):
+            item = self.profile_list.item(row)
+            item.setText('')
+            item.setData(Qt.ItemDataRole.UserRole, profile['id'])
+            item.setSizeHint(QSize(300, 96))
+            card = ProfileCard(profile, profile['id'] == self.store.active_id)
+            card.selected.connect(lambda r=row: self.profile_list.setCurrentRow(r))
+            card.activated.connect(lambda r=row: self.profile_card_action(r, self.activate_profile))
+            card.rename.connect(lambda r=row: self.profile_card_action(r, self.rename_profile))
+            card.remove.connect(lambda r=row: self.profile_card_action(r, self.delete_profile))
+            self.profile_list.setItemWidget(item, card)
+        self.update_profile_cards()
+
+    def update_profile_cards(self, *_):
+        for row in range(self.profile_list.count()):
+            card = self.profile_list.itemWidget(self.profile_list.item(row))
+            if card:
+                card.set_selected(row == self.profile_list.currentRow())
+
+    def profile_card_action(self, row, callback):
+        self.profile_list.setCurrentRow(row)
+        callback()
 
     def preferences(self):
         return QSettings(str(self.store.directory / "settings.ini"), QSettings.Format.IniFormat)
@@ -191,7 +240,7 @@ class StudioWindow(MainWindow):
             current = next((d for d in self.devices if d.id == self.device.id), None)
             self.connection_label.setText("● CONECTADO" if current else "○ DESCONECTADO")
             if current:
-                renamed = self.device.name != current.name
+                renamed = (self.device.name, self.device.button_count) != (current.name, current.button_count)
                 self.device = current
                 self.device_title.setText(current.name)
                 if renamed:
@@ -209,7 +258,7 @@ class StudioWindow(MainWindow):
         top.addWidget(BackArrow(self.go_home))
         self.device_title = label("", "title")
         top.addWidget(self.device_title, 1)
-        self.connection_label = label("", "muted")
+        self.connection_label = ConnectionLabel()
         top.addWidget(self.connection_label)
         top.addWidget(button('Identificar modelo', self.identify_device_model))
         layout.addLayout(top)
@@ -439,12 +488,14 @@ class StudioWindow(MainWindow):
         self.lighting_panel.load_device(device)
         self.canvas.configure(device)
         self.direct_button.setVisible((device.vid, device.pid) == ("046D", "C08B"))
-        self.front_view_button.setVisible(device.kind != 'keyboard')
-        self.side_view_button.setVisible(device.kind != 'keyboard')
+        has_views = device.kind == 'mouse' and (device.vid, device.pid) in [('046D', 'C08B'), ('30FA', '0400')]
+        self.front_view_button.setVisible(has_views)
+        self.side_view_button.setVisible(has_views)
         self.keyboard_macro_button.setVisible(device.kind == 'keyboard')
         self.device_notice.setText('Solo F1–F12 pueden activar macros. Las demás teclas no se reasignan. La función original de Windows también permanece activa.' if device.kind == 'keyboard' else
             'G502: cierra G HUB y su agente antes de activar el control directo. Los cambios del ratón son temporales.' if (device.vid, device.pid) == ('046D', 'C08B') else
-            'Los botones genéricos conservan su acción original al ejecutar una macro.')
+            (f'Windows informa {device.button_count} botones. ' if device.button_count else 'Windows no informa la cantidad de botones. ') +
+            'Clic izquierdo y derecho protegidos. Las macros conservan la acción original del botón.')
         self.refresh_bindings()
 
     def identify_device_model(self):
@@ -861,6 +912,11 @@ class StudioWindow(MainWindow):
         self.assign_macro_target(slot, macro_id)
 
     def assign_macro_target(self, slot, macro_id=""):
+        if self.device and self.device.kind == 'mouse' and self.device.button_count is not None and (self.device.vid, self.device.pid) != ('046D', 'C08B'):
+            minimum = {'Principal': 1, 'Secundario': 2, 'Central': 3, 'Lateral 4': 4, 'Lateral 5': 5}.get(slot)
+            if minimum is None or minimum > self.device.button_count:
+                self.status('Ese botón no está disponible en este ratón.')
+                return
         from .keyboard_support import FUNCTION_KEYS
         if self.device and self.device.kind == 'keyboard' and slot not in FUNCTION_KEYS:
             self.status('Solo F1–F12 admiten asignación de macros.')

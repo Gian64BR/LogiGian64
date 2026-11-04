@@ -204,6 +204,9 @@ class MacroEngine:
                 sections = macro["sections"]
                 run(sections["press"], True)
                 press_held = set(held)
+                if not sections["hold"]:
+                    # Nothing to repeat: wake only for release/cancellation.
+                    session.wake.wait()
                 while not session.cancel.is_set() and not session.released.is_set():
                     if sections["hold"]:
                         if not run(sections["hold"], True):

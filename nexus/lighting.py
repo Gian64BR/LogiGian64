@@ -47,6 +47,8 @@ class LightingPreview(HardwareArt):
         self.animation = QTimer(self)
         self.animation.setInterval(40)
         self.animation.timeout.connect(self.animate)
+        self._fitted_picture = None
+        self._fitted_key = None
 
     def animate(self):
         if self.isVisible():
@@ -78,7 +80,11 @@ class LightingPreview(HardwareArt):
         if self.picture.isNull():
             self.color = self.zone_color(1).name()
             return super().paintEvent(event)
-        fitted = self.picture.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        key = (self.picture.cacheKey(), self.width(), self.height())
+        if key != self._fitted_key:
+            self._fitted_picture = self.picture.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            self._fitted_key = key
+        fitted = self._fitted_picture
         x, y = (self.width() - fitted.width()) / 2, (self.height() - fitted.height()) / 2
         p = QPainter(self)
         # The optional device image has transparent LED cutouts. Paint behind

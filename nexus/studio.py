@@ -63,6 +63,9 @@ class StudioWindow(MainWindow):
             self.direct_button.setText("DESCONECTAR BOTONES G" if self.g502 and self.g502.ready else "ACTIVAR BOTONES G")
 
     def build_ui(self):
+        self.timeline_timer = QTimer(self)
+        self.timeline_timer.setSingleShot(True)
+        self.timeline_timer.timeout.connect(self.render_timeline)
         self.tabs = Router(self)
         root = QWidget()
         self.setCentralWidget(root)
@@ -998,7 +1001,7 @@ class StudioWindow(MainWindow):
                 self.table.cellWidget(row, 3).setSpecialValueText("Sin retardo")
         if not self.timeline_pending:
             self.timeline_pending = True
-            QTimer.singleShot(0, self.render_timeline)
+            self.timeline_timer.start(0)
 
     def render_events(self):
         super().render_events()
@@ -1006,11 +1009,12 @@ class StudioWindow(MainWindow):
             self.render_timeline()
 
     def render_timeline(self):
+        self.timeline_timer.stop()
         self.timeline_pending = False
         if not hasattr(self, "timeline"):
             return
         while self.timeline.count():
-            item = self.timeline.takeAt(0)
+            item = self.timeline.takeAt(self.timeline.count() - 1)
             if item.widget():
                 item.widget().hide()
                 item.widget().deleteLater()

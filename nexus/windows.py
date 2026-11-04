@@ -6,6 +6,7 @@ from ctypes import wintypes as W
 from dataclasses import dataclass, asdict
 import hashlib
 import re
+import threading
 import winreg
 
 U32 = C.c_uint32
@@ -328,17 +329,32 @@ def unregister_input():
     user32.RegisterRawInputDevices(registrations, 2, C.sizeof(RAWINPUTDEVICE))
 
 
+_input_storage = threading.local()
+
+
 def read_input(lparam: int) -> tuple[int, list[dict]] | None:
-    size = U32()
+    # Reuse a thread-local buffer; normal mouse/keyboard packets need one call.
+    buf = getattr(_input_storage, "buffer", None)
+    if buf is None:
+        buf = _input_storage.buffer = C.create_string_buffer(256)
+    size = U32(C.sizeof(buf))
     header_size = C.sizeof(RAWINPUTHEADER)
-    if user32.GetRawInputData(lparam, 0x10000003, None, C.byref(size), header_size) == 0xFFFFFFFF:
-        return None
+    result = user32.GetRawInputData(lparam, 0x10000003, buf, C.byref(size), header_size)
+    if result == 0xFFFFFFFF:
+        if C.get_last_error() != 122:
+            return None
+        if user32.GetRawInputData(lparam, 0x10000003, None, C.byref(size), header_size) == 0xFFFFFFFF:
+            return None
+        if not header_size <= size.value <= 65536:
+            return None
+        buf = _input_storage.buffer = C.create_string_buffer(size.value)
+        result = user32.GetRawInputData(lparam, 0x10000003, buf, C.byref(size), header_size)
+        if result == 0xFFFFFFFF:
+            return None
+    size.value = result
     if size.value < header_size or size.value > 65536:
         return None
-    buf = C.create_string_buffer(size.value)
-    if user32.GetRawInputData(lparam, 0x10000003, buf, C.byref(size), header_size) == 0xFFFFFFFF:
-        return None
-    header = RAWINPUTHEADER.from_buffer_copy(buf)
+    header = RAWINPUTHEADER.from_buffer(buf)
     pointer = C.addressof(buf) + header_size
     events = []
     if header.kind == 1 and size.value >= header_size + C.sizeof(RAWKEYBOARD):
@@ -352,6 +368,8 @@ def read_input(lparam: int) -> tuple[int, list[dict]] | None:
         if mouse.extra == 0x4E584853:
             return None
         flags = mouse.button.split.flags
+        if not flags:
+            return int(header.device or 0), events
         for bit, button, down in ((1, "left", True), (2, "left", False), (4, "right", True), (8, "right", False),
                                    (16, "middle", True), (32, "middle", False), (64, "x1", True), (128, "x1", False),
                                    (256, "x2", True), (512, "x2", False)):

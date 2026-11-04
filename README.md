@@ -1,4 +1,4 @@
-# LogiGian64 0.2.12 — Macros y asignaciones
+# LogiGian64 0.2.13 — Macros y asignaciones
 
 Aplicación independiente para Windows 10/11 x64, con un espacio de trabajo negro,
 panel lateral y asignación de macros sobre la imagen del periférico.
@@ -50,7 +50,7 @@ se mantiene pulsado se debe usar el activador físico asignado.
 El adaptador directo está limitado a **Logitech G502 HERO 046D:C08B**. Consulta
 HID++ en el propio dispositivo; no depende de la base de datos de G HUB.
 
-Pulsa **Activar botones G**. Si G HUB está abierto, se muestra una confirmación
+Desde 0.2.13 el control de botones del G502 se inicia automáticamente al abrir LogiGian64, también en la bandeja y sin seleccionar el dispositivo. Si G HUB está abierto, el inicio automático se cancela sin cerrarlo ni mostrar diálogos. Puedes usar **Activar botones G** para reintentar manualmente. En ese caso se muestra una confirmación
 para cerrar su interfaz, bandeja y agente. Guarda antes las ediciones pendientes
 en G HUB. No se modifica su configuración ni se detiene el actualizador.
 
@@ -286,3 +286,7 @@ Menos trabajo al procesar entrada del mouse, actualizar el editor y dibujar la v
 ## Corrección 0.2.12
 
 El G502 HERO conserva una imagen del modelo aunque G HUB se haya desinstalado o sus archivos no estén disponibles al iniciar Windows. Se incluyen vistas superior y lateral, con sus puntos de asignación adaptados. La tarjeta muestra 11 controles físicos; el dato HID de Windows se conserva en el diagnóstico. 94 pruebas aprobadas.
+
+## Botones G automáticos (0.2.13)
+
+El G502 HERO activa su control directo al iniciar la aplicación y al conectar el mouse, sin pulsar Activar botones G. Usa las asignaciones del perfil activo. Desconectar manualmente o usar Ctrl+Alt+F12 suspende el inicio automático hasta una nueva activación manual o el próximo inicio de la aplicación. Los errores no abren ventanas al arrancar y no provocan reintentos continuos. La detección de G HUB sigue evitando controladores simultáneos.

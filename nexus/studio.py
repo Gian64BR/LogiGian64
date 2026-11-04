@@ -252,6 +252,7 @@ class StudioWindow(MainWindow):
                 self.stop_all()
                 if self.g502:
                     self.g502.close()
+        self.schedule_auto_g502()
 
     def build_detail(self):
         page = QWidget()

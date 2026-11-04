@@ -16,7 +16,7 @@ def main():
     args = parser.parse_args()
     from nexus import windows as win
     if args.diagnose:
-        result = {"version": "0.2.12", "devices": [d.to_dict() for d in win.enumerate_devices()],
+        result = {"version": "0.2.13", "devices": [d.to_dict() for d in win.enumerate_devices()],
                   "pointer_speed": win.pointer_speed(), "hardware_plugins": ["G502 HERO host buttons (explicit activation)"], "macro_engine": "Windows Raw Input + SendInput + HID++ button stream",
                   "excluded_virtual_devices": [d.to_dict() for d in win.enumerate_devices(include_virtual=True) if d.virtual]}
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -47,6 +47,8 @@ def main():
             QFontDatabase.addApplicationFont(str(Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts" / filename))
     app.setStyleSheet(STYLE)
     window = MainWindow(store)
+    if not args.screenshots:
+        window.enable_auto_g502()
     if not args.startup:
         window.show()
     if args.screenshots:

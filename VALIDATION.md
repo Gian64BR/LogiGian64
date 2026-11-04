@@ -1,3 +1,14 @@
+# Verificación de LogiGian64 0.2.13
+
+Fecha local: 4 de noviembre de 2026. Windows x64.
+
+- 99 pruebas aprobadas.
+- Inicio automático sin dispositivo seleccionado y con ventana oculta, asignaciones guardadas, pausa, parada, desconexión manual, reconexión y restauración pendiente comprobados con adaptador simulado.
+- Los errores de inicio automático no muestran diálogos ni se reintentan continuamente.
+- Las capturas de QA no habilitan el inicio automático ni toman control del hardware.
+
+## Historial 0.2.12
+
 # Verificación de LogiGian64 0.2.12
 
 Fecha local: 4 de noviembre de 2026. Windows x64.

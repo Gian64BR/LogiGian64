@@ -30,6 +30,7 @@ class Events(QObject):
     finished = Signal(str)
     error = Signal(str)
     plugin_error = Signal(str)
+    auto_plugin_error = Signal(str)
     hardware = Signal(object)
 
 
@@ -84,6 +85,7 @@ class MainWindow(QMainWindow):
         self.events.input.connect(self.on_input)
         self.events.changed.connect(self.schedule_refresh)
         self.events.plugin_error.connect(self.g502_error)
+        self.events.auto_plugin_error.connect(self.auto_g502_error)
         self.events.hardware.connect(self.hardware_changed)
         self.g502 = None
         self.learning = None
@@ -98,6 +100,12 @@ class MainWindow(QMainWindow):
         self.record_start = 0
         self._loading = False
         self._closing = False
+        self._auto_g502_enabled = False
+        self._auto_g502_suspended = False
+        self._auto_g502_attempted = set()
+        self.auto_g502_timer = QTimer(self)
+        self.auto_g502_timer.setSingleShot(True)
+        self.auto_g502_timer.timeout.connect(self.auto_connect_g502)
         self.refresh_timer = QTimer(self)
         self.refresh_timer.setSingleShot(True)
         self.refresh_timer.timeout.connect(self.refresh_devices)
@@ -967,6 +975,8 @@ class MainWindow(QMainWindow):
         self.status("Macros detenidas · Ctrl+Alt+F12")
 
     def emergency_stop(self):
+        self._auto_g502_suspended = True
+        self.auto_g502_timer.stop()
         self.stop_all()
         self.physical_held.clear()
         self.armed.setChecked(False)
@@ -981,6 +991,36 @@ class MainWindow(QMainWindow):
         self.stop_all()
         self.status(message)
         self.error(message)
+
+    def enable_auto_g502(self):
+        self._auto_g502_enabled = True
+        self.schedule_auto_g502()
+
+    def schedule_auto_g502(self):
+        connected = {(d.id, tuple(d.handles)) for d in self.devices}
+        self._auto_g502_attempted.intersection_update(connected)
+        if self._auto_g502_enabled and not self._auto_g502_suspended and not self._closing:
+            self.auto_g502_timer.start(0)
+
+    def auto_connect_g502(self):
+        if (not self._auto_g502_enabled or self._auto_g502_suspended or self._closing
+                or not self.input_ready or not self.armed.isChecked()):
+            return
+        if self.g502 and ((self.g502.thread and self.g502.thread.is_alive()) or self.g502.needs_restore):
+            return
+        device = next((d for d in self.devices if (d.vid, d.pid) == ('046D', 'C08B')
+                       and (d.id, tuple(d.handles)) not in self._auto_g502_attempted), None)
+        if device:
+            self._auto_g502_attempted.add((device.id, tuple(device.handles)))
+            self.start_g502(device, automatic=True)
+
+    def auto_g502_error(self, message):
+        # A background start must not open a dialog or repeatedly reclaim a
+        # device. Manual activation remains available after resolving the cause.
+        self._auto_g502_suspended = True
+        self.auto_g502_timer.stop()
+        self.stop_all()
+        self.status(message)
 
     def hardware_changed(self, data):
         if hasattr(self, 'lighting_panel'):
@@ -997,12 +1037,15 @@ class MainWindow(QMainWindow):
         if not self.device or (self.device.vid, self.device.pid) != ("046D", "C08B"):
             return self.error("El control directo disponible corresponde al G502 HERO 046D:C08B.")
         if self.g502 and self.g502.thread and self.g502.thread.is_alive():
+            self._auto_g502_suspended = True
+            self.auto_g502_timer.stop()
             self.stop_all()
             if self.g502.close():
                 self.g502 = None
             return
         if self.g502 and self.g502.needs_restore and not self.g502.close():
             return
+        self._auto_g502_suspended = False
         from .g502 import G502Session, ghub_running, close_ghub
         try:
             if ghub_running():
@@ -1016,12 +1059,17 @@ class MainWindow(QMainWindow):
                 close_ghub()
         except (OSError, TimeoutError) as error:
             return self.error(error)
-        self.g502 = G502Session(self.device, self.events.input.emit, self.events.error.emit, self.events.plugin_error.emit,
+        self.start_g502(self.device)
+
+    def start_g502(self, device, automatic=False):
+        from .g502 import G502Session
+        self.g502 = G502Session(device, self.events.input.emit, self.events.error.emit,
+                                self.events.auto_plugin_error.emit if automatic else self.events.plugin_error.emit,
                                 self.events.hardware.emit)
         buttons = {b["trigger"]["button"] for b in self.store.active["bindings"]
-                   if b["device_id"] == self.device.id and b["trigger"]["type"] == "gbutton" and b["enabled"]}
+                   if b["device_id"] == device.id and b["trigger"]["type"] == "gbutton" and b["enabled"]}
         buttons |= {c["button"] for c in self.store.active.get("disabled_controls", [])
-                    if self.armed.isChecked() and c["device_id"] == self.device.id and type(c["button"]) is int}
+                    if self.armed.isChecked() and c["device_id"] == device.id and type(c["button"]) is int}
         self.g502.start(buttons if self.armed.isChecked() else set())
         self.status("Conectando con los botones físicos del G502…")
 
@@ -1032,7 +1080,10 @@ class MainWindow(QMainWindow):
 
     def armed_changed(self, armed):
         if not armed:
+            self.auto_g502_timer.stop()
             self.stop_all()
+        else:
+            self.schedule_auto_g502()
         self.status("Asignaciones activas" if armed else "Asignaciones pausadas")
 
     def playback_finished(self, text):
@@ -1185,6 +1236,7 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
         self._closing = True
+        self.auto_g502_timer.stop()
         self.player.stop()
         if self.g502 and not self.g502.close():
             self._closing = False

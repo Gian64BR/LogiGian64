@@ -1,11 +1,11 @@
-LogiGian64 0.2.11 — Optimización de rendimiento.
+LogiGian64 0.2.12 — Corrección de la imagen del G502 al iniciar Windows.
 
-- Lectura de entrada del mouse y teclado con memoria reutilizable y menos llamadas a Windows.
-- Eliminación de actualizaciones duplicadas en la línea de tiempo del editor.
-- Reutilización de la imagen redimensionada en la vista RGB, conservando sus animaciones.
-- Las secuencias sin acciones durante la pulsación esperan sin despertarse cada 10 ms.
-- Se mantienen el diseño, las funciones, las imágenes y los perfiles existentes.
+- El G502 HERO dispone de imágenes superior y lateral incluidas en la aplicación. Ya no aparece como un mouse genérico cuando los archivos de G HUB no están disponibles.
+- Se mantienen las imágenes anteriores de G HUB cuando están disponibles.
+- Los objetivos de asignación se adaptan a cada vista incluida.
+- La tarjeta del G502 muestra sus 11 controles físicos. El diagnóstico conserva las entradas HID informadas por Windows, que pueden ser 16.
+- Se mantienen las optimizaciones 0.2.11, los perfiles, las macros y el resto de la interfaz.
 
-90 pruebas automatizadas aprobadas. Comparación de operaciones concretas: 31 % menos tiempo al procesar movimiento simulado, 39 % menos al actualizar un editor de 200 pasos y 65 % menos por cuadro RGB de prueba. No representan una medición del consumo total de Windows. Informe incluido en PERFORMANCE.md.
+94 pruebas automatizadas aprobadas, incluidas instalación sin G HUB, imágenes en el ejecutable y ubicación de los objetivos. No se modifican mapas ni configuraciones del hardware para esta corrección.
 
-Windows 10/11 x64. Cierra la versión anterior desde la bandeja antes de instalar. El instalador actualiza la aplicación conservando los perfiles. Incluye ZIP portable, código fuente, licencias y SHA256SUMS.txt. Instalador sin firma digital.
+Windows 10/11 x64. Cierra la versión anterior desde la bandeja antes de instalar. Se incluyen instalador, ZIP portable, código fuente y SHA256SUMS.txt. Los perfiles existentes se conservan.

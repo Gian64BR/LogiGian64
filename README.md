@@ -1,4 +1,4 @@
-# LogiGian64 0.2.11 — Macros y asignaciones
+# LogiGian64 0.2.12 — Macros y asignaciones
 
 Aplicación independiente para Windows 10/11 x64, con un espacio de trabajo negro,
 panel lateral y asignación de macros sobre la imagen del periférico.
@@ -88,9 +88,7 @@ No se capturan ni guardan teclas fuera del modo de grabación activado por el us
 ## Imágenes
 
 En un equipo con G HUB instalado, Nexus puede leer sus imágenes locales de
-referencia para mostrar el G502 frontal/lateral. Esas imágenes siguen siendo
-propiedad de su titular y **no se incluyen** en el ejecutable ni en el código
-fuente distribuido. Sin ellas se dibuja una ilustración propia como alternativa.
+referencia para mostrar el G502 frontal/lateral. Las imágenes opcionales de G HUB siguen siendo propiedad de su titular. Desde 0.2.12 se incluyen vistas oficiales del producto como alternativa independiente de G HUB, con su procedencia en THIRD_PARTY_NOTICES.md.
 
 ## Desarrollo
 
@@ -284,3 +282,7 @@ El perfil Redragon K552RGB-1 y su fotografía se incluyen para el descriptor gen
 ## Optimización 0.2.11
 
 Menos trabajo al procesar entrada del mouse, actualizar el editor y dibujar la vista RGB. Las secuencias sin acciones durante la pulsación esperan sin consultas periódicas. Se mantienen el diseño, las funciones y los perfiles. 90 pruebas automatizadas aprobadas; detalles y límites en PERFORMANCE.md.
+
+## Corrección 0.2.12
+
+El G502 HERO conserva una imagen del modelo aunque G HUB se haya desinstalado o sus archivos no estén disponibles al iniciar Windows. Se incluyen vistas superior y lateral, con sus puntos de asignación adaptados. La tarjeta muestra 11 controles físicos; el dato HID de Windows se conserva en el diagnóstico. 94 pruebas aprobadas.

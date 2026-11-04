@@ -144,8 +144,8 @@ def reference_image(device, side=False):
     if device.kind == "mouse" and (device.vid, device.pid) == ("30FA", "0400"):
         root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
         return root / "assets" / ("knup-kpv84-side.png" if side else "knup-kpv84-top.png")
-    # Read an optional image from the user's existing installation at runtime.
-    # These proprietary files are never copied into the source or release.
+    # Retain the previous G HUB artwork when available. The bundled product
+    # views keep this model recognizable on a clean install or after uninstall.
     if (device.vid, device.pid) != ("046D", "C08B"):
         if device.kind == 'mouse':
             root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent.parent))
@@ -155,9 +155,12 @@ def reference_image(device, side=False):
     name = "side_hero.png" if side else "front_hero.png"
     try:
         candidates = sorted(root.glob(f"*/g502_hero/images/device/{name}"))
-        return candidates[-1] if candidates else None
+        if candidates:
+            return candidates[-1]
     except OSError:
-        return None
+        pass
+    root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent.parent))
+    return root / 'assets' / ('g502-hero-side.png' if side else 'g502-hero-top.png')
 
 
 class HardwareArt(DeviceArt):
@@ -170,12 +173,20 @@ class HardwareArt(DeviceArt):
 
     def reload(self):
         path = reference_image(self.device, self.side)
+        self.bundled_g502 = bool(path and path.name in ('g502-hero-top.png', 'g502-hero-side.png'))
         self.picture = QPixmap(str(path)) if path else QPixmap()
+        if self.picture.isNull() and (self.device.vid, self.device.pid) == ('046D', 'C08B'):
+            root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent.parent))
+            path = root / 'assets' / ('g502-hero-side.png' if self.side else 'g502-hero-top.png')
+            self.picture = QPixmap(str(path))
+            self.bundled_g502 = True
         self.content_rect = QRectF(QRegion(self.picture.mask()).boundingRect()) if not self.picture.isNull() else QRectF()
         self.update()
 
     def source_rect(self):
         from .keyboard_support import is_kumara
+        if self.bundled_g502 and not self.content_rect.isEmpty():
+            return self.content_rect
         if is_kumara(self.device) and not self.picture.isNull():
             # Frame the original photograph in the view without editing it.
             return QRectF(52, 78 if self.picture.height() < 1000 else 365, 1396, 498)
@@ -406,7 +417,8 @@ class HubCard(QFrame):
         layout.addWidget(title_label)
         layout.addWidget(ConnectionLabel())
         if device.kind == 'mouse':
-            text = f'{device.button_count} botones informados por Windows' if device.button_count else 'Cantidad de botones no disponible'
+            text = ('11 controles físicos · G502 HERO' if (device.vid, device.pid) == ('046D', 'C08B') else
+                    f'{device.button_count} botones informados por Windows' if device.button_count else 'Cantidad de botones no disponible')
             layout.addWidget(label(text, 'muted', True))
         art = HardwareArt(device)
         art.setMinimumSize(160, 240)
@@ -486,8 +498,9 @@ class AssignmentCanvas(QWidget):
         else:
             height = min(410, h * .72)
             knup = (self.device.vid, self.device.pid) == ("30FA", "0400")
-            if knup and not self.art.picture.isNull():
-                ratio = self.art.picture.width() / self.art.picture.height()
+            if (knup or self.art.bundled_g502) and not self.art.picture.isNull():
+                source = self.art.source_rect()
+                ratio = source.width() / source.height()
                 if self.side:
                     width = min(490, w * .48)
                     height = width / ratio
@@ -519,6 +532,16 @@ class AssignmentCanvas(QWidget):
             if knup:
                 coords = ({"Lateral 4": (.58, .56), "Lateral 5": (.44, .59)} if self.side else
                           {"Principal": (.32, .25), "Secundario": (.68, .25), "Central": (.50, .24)})
+            if self.art.bundled_g502:
+                # Positions in the bundled product renders, normalized to the
+                # visible source rectangle (transparent padding is excluded).
+                source = self.art.source_rect()
+                pixels = ({'G4': (754, 486), 'G5': (595, 513), 'G6': (527, 605)} if self.side else
+                          {'G1': (525, 254), 'G2': (735, 257), 'G3': (635, 313),
+                           'G7': (452, 363), 'G8': (462, 284), 'G9': (638, 501),
+                           'G10': (690, 313), 'G11': (582, 313)})
+                coords = {slot: ((px - source.x()) / source.width(), (py - source.y()) / source.height())
+                          for slot, (px, py) in pixels.items()}
             # Use the actual integer widget rectangle used to paint the image.
             rect = self.art.geometry()
             self.points = {slot: QPointF(rect.x() + px * rect.width(), rect.y() + py * rect.height())

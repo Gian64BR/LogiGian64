@@ -1,3 +1,14 @@
+# Verificación de LogiGian64 0.2.12
+
+Fecha local: 4 de noviembre de 2026. Windows x64.
+
+- 94 pruebas automatizadas aprobadas.
+- Vistas del G502 verificadas sin G HUB y mediante ruta de recursos de ejecutable congelado.
+- Objetivos superior/lateral y separación del conteo HID respecto a controles físicos comprobados.
+- Se mantienen las limitaciones físicas del historial siguiente.
+
+## Historial 0.2.11
+
 # Verificación de LogiGian64 0.2.11
 
 Fecha local: 3 de noviembre de 2026. Windows x64.

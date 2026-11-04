@@ -17,6 +17,67 @@ def keyboard(identity='unit-a'):
 
 
 class DeviceDetectionTests(unittest.TestCase):
+    def test_g502_unreadable_external_picture_uses_bundled_image(self):
+        from nexus.studio_widgets import HardwareArt
+        app = QApplication.instance() or QApplication([])
+        device = win.Device('hero', 'G502 HERO', 'mouse', 'Logitech', '046D', 'C08B', [], [])
+        with patch.object(Path, 'glob', return_value=[Path('missing/front_hero.png')]):
+            art = HardwareArt(device)
+        try:
+            self.assertFalse(art.picture.isNull())
+            self.assertTrue(art.bundled_g502)
+        finally:
+            art.deleteLater()
+
+    def test_g502_images_are_bundled_without_ghub_and_in_frozen_build(self):
+        import sys
+        from PySide6.QtGui import QImage
+        from nexus.studio_widgets import reference_image
+        device = win.Device('hero', 'G502 HERO', 'mouse', 'Logitech', '046D', 'C08B', [], [], button_count=16)
+        root = Path(__file__).resolve().parents[1]
+        with patch.object(Path, 'glob', return_value=[]), patch.object(sys, '_MEIPASS', str(root), create=True):
+            for side in (False, True):
+                path = reference_image(device, side)
+                self.assertEqual(path.parent, root / 'assets')
+                image = QImage(str(path))
+                self.assertFalse(image.isNull())
+                self.assertGreater(image.width(), 100)
+                self.assertTrue(image.hasAlphaChannel())
+
+    def test_g502_card_uses_physical_controls_without_changing_raw_count(self):
+        from PySide6.QtWidgets import QLabel
+        from nexus.studio_widgets import HubCard
+        app = QApplication.instance() or QApplication([])
+        device = win.Device('hero', 'G502 HERO', 'mouse', 'Logitech', '046D', 'C08B', [], [], button_count=16)
+        card = HubCard(device)
+        try:
+            texts = [label.text() for label in card.findChildren(QLabel)]
+            self.assertIn('11 controles físicos · G502 HERO', texts)
+            self.assertEqual(device.button_count, 16)
+        finally:
+            card.deleteLater()
+
+    def test_g502_bundled_views_have_correct_aspect_and_button_positions(self):
+        from nexus.studio_widgets import AssignmentCanvas
+        app = QApplication.instance() or QApplication([])
+        device = win.Device('hero', 'G502 HERO', 'mouse', 'Logitech', '046D', 'C08B', [], [])
+        canvas = AssignmentCanvas()
+        canvas.resize(800, 600)
+        try:
+            with patch.object(Path, 'glob', return_value=[]):
+                canvas.configure(device)
+                self.assertTrue(canvas.art.bundled_g502)
+                self.assertGreater(canvas.art.height(), canvas.art.width())
+                self.assertEqual(set(canvas.points), {'G1','G2','G3','G7','G8','G9','G10','G11'})
+                canvas.side = True
+                canvas.configure(device)
+                self.assertGreater(canvas.art.width(), canvas.art.height())
+                self.assertEqual(set(canvas.points), {'G4','G5','G6'})
+                for point in canvas.points.values():
+                    self.assertTrue(canvas.art.geometry().contains(point.toPoint()))
+        finally:
+            canvas.deleteLater()
+
     def test_user_model_is_bound_to_unit_and_matching_usb_identity(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'identities.json'

@@ -1,4 +1,4 @@
-# LogiGian64 0.2.10 — Macros y asignaciones
+# LogiGian64 0.2.11 — Macros y asignaciones
 
 Aplicación independiente para Windows 10/11 x64, con un espacio de trabajo negro,
 panel lateral y asignación de macros sobre la imagen del periférico.
@@ -280,3 +280,7 @@ El perfil Redragon K552RGB-1 y su fotografía se incluyen para el descriptor gen
 - Consulta de botones por dispositivo mediante Raw Input de Windows. Los ratones genéricos muestran los botones informados; si el dato no está disponible, no se inventan botones laterales. Algunos controladores pueden informar capacidades distintas de los botones físicos y los botones especiales de modelos compatibles requieren su adaptador.
 - Imagen genérica del ratón con fondo transparente para dispositivos sin imagen de modelo; las imágenes de modelos reconocidos conservan prioridad. La imagen es representativa, no prueba de que existan todos los botones dibujados.
 - Se rechaza asignar macros a botones no disponibles en un ratón genérico con capacidad conocida. Clic izquierdo y derecho permanecen protegidos.
+
+## Optimización 0.2.11
+
+Menos trabajo al procesar entrada del mouse, actualizar el editor y dibujar la vista RGB. Las secuencias sin acciones durante la pulsación esperan sin consultas periódicas. Se mantienen el diseño, las funciones y los perfiles. 90 pruebas automatizadas aprobadas; detalles y límites en PERFORMANCE.md.

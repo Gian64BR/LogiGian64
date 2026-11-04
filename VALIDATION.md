@@ -1,4 +1,14 @@
-# Verificación de LogiGian64 0.2
+# Verificación de LogiGian64 0.2.11
+
+Fecha local: 3 de noviembre de 2026. Windows x64.
+
+- 90 pruebas automatizadas aprobadas, incluidas las regresiones de rendimiento.
+- Comparación visual y de rendimiento documentada en PERFORMANCE.md.
+- El ejecutable 0.2.11, los ZIP y el instalador se reconstruyen para esta Release.
+- Se conserva el alcance y las limitaciones de validación física detalladas abajo.
+
+## Historial de validación 0.2
+
 
 Fecha local: 2 de noviembre de 2026. Windows x64.
 

@@ -1,12 +1,11 @@
-LogiGian64 0.2.10 — Perfiles renovados y detección de botones del ratón.
+LogiGian64 0.2.11 — Optimización de rendimiento.
 
-- Puntos verdes de conexión en las tarjetas y en el detalle de ratones y teclados.
-- Perfiles con tarjetas redondeadas, selección turquesa y botones de lápiz y papelera dentro de cada tarjeta. Se mantiene la confirmación de borrado.
-- Detección de la cantidad de botones informada por Windows para cada ratón. Un mouse sencillo de tres botones muestra izquierdo, derecho y central, sin añadir laterales inexistentes.
-- Nueva imagen genérica con fondo transparente para los ratones sin imagen propia de modelo. Los dispositivos reconocidos conservan sus imágenes.
-- Protección de los clics izquierdo y derecho y rechazo de asignaciones a botones no disponibles.
-- Se mantienen las macros F1–F12, nombre y fotografía del Redragon K552RGB-1, inicio en bandeja y controles compatibles del G502.
+- Lectura de entrada del mouse y teclado con memoria reutilizable y menos llamadas a Windows.
+- Eliminación de actualizaciones duplicadas en la línea de tiempo del editor.
+- Reutilización de la imagen redimensionada en la vista RGB, conservando sus animaciones.
+- Las secuencias sin acciones durante la pulsación esperan sin despertarse cada 10 ms.
+- Se mantienen el diseño, las funciones, las imágenes y los perfiles existentes.
 
-84 pruebas automatizadas aprobadas. El conteo depende de las capacidades informadas por el controlador; los botones especiales requieren compatibilidad específica.
+90 pruebas automatizadas aprobadas. Comparación de operaciones concretas: 31 % menos tiempo al procesar movimiento simulado, 39 % menos al actualizar un editor de 200 pasos y 65 % menos por cuadro RGB de prueba. No representan una medición del consumo total de Windows. Informe incluido en PERFORMANCE.md.
 
-Windows 10/11 x64. Instalador sin firma digital. Selecciona Salir en la bandeja de la versión anterior antes de instalar. Incluye código fuente, licencias y SHA256SUMS.txt.
+Windows 10/11 x64. Cierra la versión anterior desde la bandeja antes de instalar. El instalador actualiza la aplicación conservando los perfiles. Incluye ZIP portable, código fuente, licencias y SHA256SUMS.txt. Instalador sin firma digital.

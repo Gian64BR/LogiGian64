@@ -17,7 +17,26 @@ def new_id() -> str:
 
 
 def new_profile(name: str = "Escritorio") -> dict:
-    return {"id": new_id(), "name": name, "macros": [], "bindings": [], "colors": {}}
+    return {"id": new_id(), "name": name, "macros": [], "bindings": [], "colors": {}, "sensitivity": {}}
+
+
+def validate_sensitivity(value):
+    if not isinstance(value, dict):
+        raise ValueError('Sensibilidad incorrecta.')
+    clean = {}
+    if 'levels' in value:
+        levels = value['levels']
+        if (not isinstance(levels, list) or len(levels) != 5
+                or any(type(v) is not int or not 100 <= v <= 25600 for v in levels)
+                or any(b - a < 50 for a, b in zip(levels, levels[1:]))):
+            raise ValueError('Niveles de sensibilidad incorrectos.')
+        clean['levels'] = list(levels)
+    for key, low, high in (('selected', 0, 4), ('dpi', 100, 25600), ('pointer_speed', 1, 20)):
+        if key in value:
+            if type(value[key]) is not int or not low <= value[key] <= high:
+                raise ValueError('Valor de sensibilidad incorrecto: ' + key)
+            clean[key] = value[key]
+    return clean
 
 
 def validate_events(events: list, *, initial_held=None, balanced=True) -> list[dict]:
@@ -224,6 +243,13 @@ def validate_profile(value: dict) -> dict:
     if isinstance(colors, dict):
         import re
         profile["colors"] = {str(k)[:100]: v for k, v in colors.items() if isinstance(v, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", v)}
+    sensitivity = value.get('sensitivity', {})
+    if not isinstance(sensitivity, dict) or len(sensitivity) > 100:
+        raise ValueError('Configuración de sensibilidad incorrecta.')
+    for device_id, settings in sensitivity.items():
+        if not isinstance(device_id, str) or not 1 <= len(device_id) <= 100:
+            raise ValueError('Dispositivo de sensibilidad incorrecto.')
+        profile['sensitivity'][device_id] = validate_sensitivity(settings)
     return profile
 
 

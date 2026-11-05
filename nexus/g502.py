@@ -12,6 +12,7 @@ from pathlib import Path
 import threading
 import time
 import hashlib
+import logging
 
 try:
     import hid
@@ -87,6 +88,16 @@ class G502Session:
         self.previous = 0
         self.request_id = 0
         self.monitor_error = None
+        self.device_removed = threading.Event()
+
+    def mark_removed(self):
+        self.device_removed.set()
+        self.stop_requested.set()
+
+    def abandon_removed(self):
+        """A new USB connection has a new transport; never restore via the old one."""
+        self.needs_restore = False
+        self.discard()
 
     def _monitor(self):
         while not self.stop_requested.wait(4):
@@ -116,11 +127,11 @@ class G502Session:
     def restore_lighting(self):
         self.commands.put(('lighting_restore', None))
 
-    def set_dpi(self, value):
+    def set_dpi(self, value, profile_id=None):
         if not self.ready or not self.dpi_state:
             raise OSError("Activa el control directo del G502 antes de cambiar el DPI.")
         self.validate_dpi(value)
-        self.commands.put(("dpi", value))
+        self.commands.put(("dpi", (value, profile_id)))
 
     def validate_dpi(self, value):
         state = self.dpi_state
@@ -160,7 +171,7 @@ class G502Session:
         self.dpi_state = {'minimum': min(values), 'maximum': max(values), 'step': step,
                           'values': values, 'current': self.original_dpi}
 
-    def _apply_dpi(self, value):
+    def _apply_dpi(self, value, notify=True, profile_id=None):
         self.validate_dpi(value)
         self.changed_dpi = True
         self.request(self.dpi_index, 3, [0, value >> 8, value & 255])
@@ -168,7 +179,8 @@ class G502Session:
         if current != value:
             raise OSError(f"El sensor confirmó {current} DPI en lugar de {value}.")
         self.dpi_state['current'] = current
-        self.on_hardware({'kind': 'dpi', 'device_id': self.device.id, **self.dpi_state})
+        if notify:
+            self.on_hardware({'kind': 'dpi', 'device_id': self.device.id, 'profile_id': profile_id, **self.dpi_state})
 
     def close(self):
         self.stop_requested.set()
@@ -177,6 +189,9 @@ class G502Session:
         if self.thread and self.thread.is_alive():
             self.on_error("El G502 aún está restaurando su configuración. Espera antes de cerrar.")
             return False
+        if self.device_removed.is_set():
+            self.abandon_removed()
+            return True
         if self.needs_restore:
             failures = self._restore()
             self.needs_restore = bool(failures)
@@ -188,8 +203,11 @@ class G502Session:
 
     def discard(self):
         if self.channel:
-            self.channel.close()
-            self.channel = None
+            channel, self.channel = self.channel, None
+            try:
+                channel.close()
+            except OSError:
+                logging.exception('Cierre del transporte HID')
 
     def _report(self, report):
         self.previous, events = decode_buttons(report, self.spy, self.previous, self.count)
@@ -240,23 +258,19 @@ class G502Session:
 
     def _restore(self):
         failures = []
+        if self.device_removed.is_set():
+            return failures
         if self.lighting:
             failures.extend(self.lighting.restore())
-        if self.changed_dpi:
-            try:
-                value = self.original_dpi
-                self.request(self.dpi_index, 3, [0, value >> 8, value & 255])
-                if self._read_dpi() != value:
-                    raise OSError("El sensor no confirmó el DPI original.")
-                self.changed_dpi = False
-            except Exception as error:
-                failures.append("DPI original: " + str(error))
+        restoring_mode = self.changed_mode
         for needed, index, fn, data, description in (
             (self.changed_map, self.spy, 4, self.original_map or [], "mapa de botones"),
             (self.started_spy, self.spy, 2, [], "captura de botones"),
             (self.changed_mode, self.profiles, 1, [self.original_mode or 1], "modo del ratón")):
             if needed:
-                if description == "modo del ratón" and (self.changed_dpi or failures):
+                if self.device_removed.is_set():
+                    break
+                if description == "modo del ratón" and failures:
                     continue
                 try:
                     self.request(index, fn, data)
@@ -272,6 +286,18 @@ class G502Session:
                         self.started_spy = False
                 except Exception as error:
                     failures.append(description + ": " + str(error))
+        # Switching modes can itself change the DPI. Verify it only after the
+        # original mode has been restored, otherwise the final sensitivity lies.
+        if not self.device_removed.is_set() and (self.changed_dpi or (restoring_mode and not self.changed_mode and self.original_dpi is not None)):
+            try:
+                value = self.original_dpi
+                if self._read_dpi() != value:
+                    self.request(self.dpi_index, 3, [0, value >> 8, value & 255])
+                if self._read_dpi() != value:
+                    raise OSError("El sensor no confirmó el DPI original.")
+                self.changed_dpi = False
+            except Exception as error:
+                failures.append("DPI original: " + str(error))
         return failures
 
     def _run(self, buttons):
@@ -321,6 +347,8 @@ class G502Session:
             self._apply_map(buttons)
             if self.dpi_state:
                 self.dpi_state['current'] = self._read_dpi()
+                if self.dpi_state['current'] != self.original_dpi:
+                    self._apply_dpi(self.original_dpi, notify=False)
             self.ready = True
             self.on_hardware({'kind': 'ready', 'device_id': self.device.id, 'dpi': self.dpi_state, 'dpi_error': dpi_error,
                               'lighting': self.lighting.zones if self.lighting else None, 'lighting_error': self.lighting_error})
@@ -332,10 +360,12 @@ class G502Session:
                     if command == 'buttons':
                         self._apply_map(value)
                     elif command == 'dpi':
+                        dpi_value, profile_id = value
                         try:
-                            self._apply_dpi(value)
+                            self._apply_dpi(dpi_value, profile_id=profile_id)
                         except (OSError, ValueError) as error:
-                            self.on_hardware({'kind': 'dpi_error', 'device_id': self.device.id, 'error': str(error)})
+                            self.on_hardware({'kind': 'dpi_error', 'device_id': self.device.id,
+                                              'profile_id': profile_id, 'error': str(error)})
                     elif command in ('lighting', 'lighting_restore'):
                         try:
                             if not self.lighting:
@@ -362,6 +392,13 @@ class G502Session:
                     self._report(report)
         except Exception as error:
             problem = str(error)
+            if self.channel and not self.monitor_error and not self.stop_requested.is_set():
+                try:
+                    present = any(matches_device(item, self.device) for item in hid.enumerate(0x046D, 0xC08B))
+                    if not present:
+                        self.device_removed.set()
+                except Exception:
+                    pass
         finally:
             self.stop_requested.set()
             problem = problem or self.monitor_error
@@ -378,7 +415,12 @@ class G502Session:
                     self.discard()
                 if failures:
                     problem = (problem + "\n" if problem else "") + "Restauración pendiente: " + "; ".join(failures)
-            if problem:
+            removed = self.device_removed.is_set()
+            if removed:
+                self.abandon_removed()
+            if problem and not removed:
                 self.on_error(problem)
-            else:
+            elif not removed:
                 self.on_status("Control directo del G502 desconectado; configuración temporal restaurada.")
+            self.on_hardware({'kind': 'stopped', 'device_id': self.device.id, 'removed': removed,
+                              'needs_restore': self.needs_restore})

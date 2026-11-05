@@ -75,6 +75,55 @@ class FakeHid:
 
 
 class G502Tests(unittest.TestCase):
+    def test_internal_dpi_baseline_does_not_replace_user_confirmed_preference(self):
+        updates = []
+        session = G502Session(SimpleNamespace(id='a' * 24), lambda *args: None, lambda *args: None,
+                              lambda *args: None, updates.append)
+        session.dpi_state = dict(minimum=100, maximum=25600, step=50, values=[], current=800)
+        session.request = lambda *args: None
+        session._read_dpi = lambda: 3200
+        session._apply_dpi(3200, notify=False)
+        self.assertEqual(session.dpi_state['current'], 3200)
+        self.assertEqual(updates, [])
+
+    def test_unplug_retires_transport_without_restoring_through_dead_handle(self):
+        unplugged = threading.Event()
+        class UnpluggedHid(FakeHid):
+            def read(self, size, timeout):
+                if unplugged.is_set():
+                    raise OSError('USB desconectado')
+                return super().read(size, timeout)
+        fake = UnpluggedHid(dpi=True)
+        session, ready, errors, _ = self.launch(fake)
+        self.assertTrue(ready.wait(1))
+        with patch('nexus.g502.hid.enumerate', return_value=[]):
+            writes = len(fake.requests)
+            unplugged.set()
+            session.thread.join(2)
+        self.assertFalse(session.thread.is_alive())
+        self.assertTrue(session.device_removed.is_set())
+        self.assertFalse(session.needs_restore)
+        self.assertTrue(fake.closed)
+        self.assertEqual(len(fake.requests), writes)
+        self.assertEqual(errors, [])
+        self.assertTrue(session.close())
+
+    def test_host_mode_transition_preserves_sensor_sensitivity(self):
+        class ModeChangesDpi(FakeHid):
+            def write(self, packet):
+                if packet[2] == 12 and packet[3] >> 4 == 1:
+                    self.dpi = 800
+                return super().write(packet)
+        fake = ModeChangesDpi(dpi=True)
+        session, ready, errors, _ = self.launch(fake)
+        self.assertTrue(ready.wait(1))
+        self.assertEqual(fake.dpi, 3200)
+        self.assertEqual(session.dpi_state['current'], 3200)
+        self.assertTrue(session.close())
+        self.assertEqual(fake.mode, 1)
+        self.assertEqual(fake.dpi, 3200)
+        self.assertEqual(errors, [])
+
     def test_primary_buttons_can_never_be_suppressed_in_hardware(self):
         fake = FakeHid()
         fake.mapping[:2] = [0, 0]

@@ -250,8 +250,6 @@ class StudioWindow(MainWindow):
                     self.canvas.configure(current, self.canvas.names)
             else:
                 self.stop_all()
-                if self.g502:
-                    self.g502.close()
         self.schedule_auto_g502()
 
     def build_detail(self):

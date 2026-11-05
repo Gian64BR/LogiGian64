@@ -201,7 +201,7 @@ class SensitivityPanel(QWidget):
         self.current_dpi = None
         self.track.levels, self.track.selected = DEFAULT_LEVELS.copy(), 1
         try:
-            data = json.loads(self.window.preferences().value(f'sensitivity/{device.id}', '{}'))
+            data = self.window.profile_sensitivity(device.id)
             levels = data.get('levels', []) if isinstance(data, dict) else []
             if len(levels) == 5 and all(type(v) is int and 100 <= v <= 25600 for v in levels) and all(b - a >= 50 for a, b in zip(levels, levels[1:])):
                 self.track.levels = levels
@@ -234,13 +234,16 @@ class SensitivityPanel(QWidget):
                 self.dpi_button.setText('APLICAR DPI AL SENSOR')
                 if self.pending_dpi is not None:
                     self.apply_timer.start()
-                elif self.current_dpi in self.track.levels:
+                elif self.current_dpi in self.track.levels and 'dpi' not in self.window.profile_sensitivity(self.device_id):
                     self.track.selected = self.track.levels.index(self.current_dpi)
                     self.refresh_values()
             else:
                 self.notice.setText('DPI no disponible: ' + str(data.get('dpi_error') or 'el sensor no respondió'))
         elif kind == 'dpi':
             self.current_dpi = data['current']
+            if self.current_dpi in self.track.levels:
+                self.track.selected = self.track.levels.index(self.current_dpi)
+                self.refresh_values()
             self.confirmed_label.setText(f'DPI físico confirmado por el sensor: {self.current_dpi}')
         elif kind == 'dpi_error':
             self.current_dpi = None
@@ -258,6 +261,9 @@ class SensitivityPanel(QWidget):
             return
         session = self.window.g502
         self.pending_dpi = self.track.levels[self.track.selected]
+        if not self.window.save_profile_sensitivity(self.device_id, levels=self.track.levels,
+                                                   selected=self.track.selected, dpi=self.pending_dpi):
+            return
         if not session or not session.ready or session.device.id != self.device_id:
             if session and session.thread and session.thread.is_alive():
                 return
@@ -267,7 +273,7 @@ class SensitivityPanel(QWidget):
             return
         try:
             value = self.pending_dpi
-            session.set_dpi(value)
+            session.set_dpi(value, profile_id=self.window.store.active_id)
             self.pending_dpi = None
             self.confirmed_label.setText(f'Solicitando {value} DPI al sensor…')
         except (OSError, ValueError) as error:
@@ -282,7 +288,8 @@ class SensitivityPanel(QWidget):
 
     def save_levels(self):
         if self.device_id:
-            self.window.preferences().setValue(f'sensitivity/{self.device_id}', json.dumps({'levels': self.track.levels, 'selected': self.track.selected}))
+            self.window.save_profile_sensitivity(self.device_id, levels=self.track.levels,
+                selected=self.track.selected, dpi=self.track.levels[self.track.selected])
         self.refresh_values()
         if self.connected:
             self.confirmed_label.setText('Cambio pendiente de confirmación del sensor…')

@@ -1,12 +1,13 @@
-LogiGian64 0.2.13 — Activación automática de los botones del G502.
+LogiGian64 0.2.14 — Reconexión, cierre y sensibilidad por perfil.
 
-- El control directo del G502 HERO se inicia automáticamente al abrir LogiGian64, también cuando arranca con Windows en la bandeja.
-- No hace falta seleccionar el mouse ni pulsar Activar botones G. Se usan las asignaciones guardadas del perfil activo.
-- La conexión de dispositivos programa la activación sin consultas periódicas adicionales.
-- La comprobación de G HUB se ejecuta en el hilo del adaptador. Si está abierto, el inicio automático se cancela sin cerrarlo ni abrir diálogos.
-- Se respetan la desconexión manual, las asignaciones pausadas, la parada de emergencia y las restauraciones pendientes.
-- Se conservan el diseño, los perfiles, las macros y las imágenes incluidas desde 0.2.12.
+- Recuperación automática de los botones G al desenchufar y volver a conectar el G502 HERO.
+- Los errores tardíos de una conexión USB anterior no desactivan la conexión nueva.
+- El DPI seleccionado, los niveles y la velocidad del puntero de Windows quedan guardados en cada perfil y se vuelven a aplicar al iniciar o cambiar de perfil.
+- Se conservan las preferencias anteriores; la sensibilidad también se incluye al duplicar, exportar o importar perfiles.
+- Cambiar el modo del mouse ya no deja una sensibilidad distinta de la configurada. Al salir se restaura el estado anterior del sensor y al abrir se recupera el perfil activo.
+- Salir desde la bandeja finaliza la aplicación con la ventana abierta u oculta. Un transporte USB desconectado o una restauración fallida ya no bloquean indefinidamente el cierre; se conserva un diagnóstico local cuando corresponde.
+- Se mantienen las macros, las imágenes y el diseño existentes.
 
-99 pruebas automatizadas aprobadas. Las pruebas de conexión automática utilizan un adaptador simulado y no accionan el hardware durante la suite.
+111 pruebas automatizadas aprobadas. Incluyen reconexión simulada, conservación de sensibilidad al reabrir, separación entre perfiles, mensajes tardíos y cierre real de procesos de prueba. La suite usa transporte HID simulado; no sustituye la comprobación física de todos los botones o firmwares.
 
-Windows 10/11 x64. Incluye instalador, ZIP portable, código fuente y SHA256SUMS.txt. Cierra la versión anterior desde su bandeja antes de instalar. Los perfiles se conservan.
+Windows 10/11 x64. Incluye instalador, ZIP portable, código fuente, licencias y SHA256SUMS.txt. Cierra la versión anterior desde la bandeja antes de instalar. Se conservan los perfiles existentes. Instalador sin firma digital.

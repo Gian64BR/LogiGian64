@@ -1,3 +1,16 @@
+# Verificación de LogiGian64 0.2.14
+
+Fecha local: 4 de noviembre de 2026. Windows x64.
+
+- 111 pruebas automatizadas aprobadas.
+- Reconexión rápida y separación de mensajes de sesiones antiguas verificadas con transporte simulado.
+- DPI preservado al cambiar de modo, selección guardada antes de la confirmación del sensor y recuperación al cerrar/reabrir comprobados.
+- Valores independientes por perfil, migración de ajustes anteriores y conservación al importar/exportar/duplicar comprobados.
+- La acción real Salir de la bandeja ejecutada en procesos Python separados termina con ventana visible u oculta, también si una restauración no se puede confirmar.
+- Se conserva el alcance de validación física descrito en el historial.
+
+## Historial anterior
+
 # Verificación de LogiGian64 0.2.13
 
 Fecha local: 4 de noviembre de 2026. Windows x64.

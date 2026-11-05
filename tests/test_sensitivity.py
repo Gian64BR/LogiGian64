@@ -31,7 +31,7 @@ class SensitivityTests(unittest.TestCase):
             panel.track.set_level(3, 3300)
             panel.apply_timer.stop()
             panel.apply_dpi()
-            window.g502.set_dpi.assert_called_once_with(3300)
+            window.g502.set_dpi.assert_called_once_with(3300, profile_id=window.store.active_id)
             self.assertIn('Solicitando', panel.confirmed_label.text())
             self.assertEqual(panel.current_dpi, 3200)
             panel.hardware_changed({'kind': 'dpi', 'device_id': device.id, 'current': 3300})

@@ -2,6 +2,7 @@ import os
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from pathlib import Path
 import tempfile
+import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
@@ -28,7 +29,11 @@ class AutomaticG502Tests(unittest.TestCase):
         def session(device, *callbacks):
             result = SimpleNamespace(device=device, thread=SimpleNamespace(is_alive=lambda: True),
                 ready=False, needs_restore=False, start=Mock(), close=Mock(return_value=True),
-                update_buttons=Mock(), callbacks=callbacks)
+                update_buttons=Mock(), callbacks=callbacks, device_removed=threading.Event(), set_dpi=Mock())
+            def mark_removed():
+                result.device_removed.set()
+            result.mark_removed = mark_removed
+            result.abandon_removed = Mock()
             self.sessions.append(result)
             return result
         factory = patch('nexus.g502.G502Session', side_effect=session)
@@ -104,6 +109,50 @@ class AutomaticG502Tests(unittest.TestCase):
             dialog.assert_not_called()
             self.factory.assert_called_once()
             self.assertTrue(self.window._auto_g502_suspended)
+
+    def test_quick_unplug_replug_recovers_without_old_errors_disabling_new_session(self):
+        from dataclasses import replace
+        self.enable()
+        old = self.sessions[0]
+        self.window.devices = []
+        self.window.schedule_auto_g502()
+        self.assertTrue(old.device_removed.is_set())
+        replacement = replace(self.device, handles=[456])
+        self.window.devices = [replacement]
+        self.window.auto_connect_g502()
+        self.assertTrue(self.window.auto_g502_timer.isActive())
+        old.thread.is_alive = lambda: False
+        with patch.object(win, 'enumerate_devices', return_value=[replacement]):
+            old.callbacks[2]('USB desconectado')
+        self.assertFalse(self.window._auto_g502_suspended)
+        old.callbacks[3](dict(kind='stopped', device_id=self.device.id, removed=True))
+        self.window.auto_g502_timer.stop()
+        self.window.auto_connect_g502()
+        self.assertEqual(self.factory.call_count, 2)
+        self.assertIs(self.window.g502.device, replacement)
+        old.callbacks[2]('Error tardío del transporte antiguo')
+        self.assertFalse(self.window._auto_g502_suspended)
+
+    def test_confirmed_dpi_recovers_on_reconnection_without_selecting_mouse(self):
+        self.enable()
+        callbacks = self.sessions[0].callbacks
+        callbacks[3](dict(kind='dpi', device_id=self.device.id, current=1450))
+        self.assertEqual(self.window.profile_sensitivity(self.device.id)['dpi'], 1450)
+        callbacks[3](dict(kind='ready', device_id=self.device.id,
+                          dpi=dict(current=800, minimum=100, maximum=25600, step=50)))
+        self.sessions[0].set_dpi.assert_called_once_with(1450, profile_id=self.window.store.active_id)
+        self.assertIsNone(self.window.device)
+
+    def test_removal_after_an_earlier_error_clears_only_fault_suspension(self):
+        self.enable()
+        self.window.auto_g502_error('El USB dejó de responder antes de notificarse la extracción')
+        self.assertTrue(self.window._auto_g502_suspended)
+        self.window.devices = []
+        self.window.schedule_auto_g502()
+        self.assertFalse(self.window._auto_g502_suspended)
+        self.window.emergency_stop()
+        self.window.schedule_auto_g502()
+        self.assertTrue(self.window._auto_g502_suspended)
 
 
 if __name__ == '__main__':

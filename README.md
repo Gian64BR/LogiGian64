@@ -1,4 +1,4 @@
-# LogiGian64 0.2.13 — Macros y asignaciones
+# LogiGian64 0.2.14 — Macros y asignaciones
 
 Aplicación independiente para Windows 10/11 x64, con un espacio de trabajo negro,
 panel lateral y asignación de macros sobre la imagen del periférico.
@@ -290,3 +290,12 @@ El G502 HERO conserva una imagen del modelo aunque G HUB se haya desinstalado o 
 ## Botones G automáticos (0.2.13)
 
 El G502 HERO activa su control directo al iniciar la aplicación y al conectar el mouse, sin pulsar Activar botones G. Usa las asignaciones del perfil activo. Desconectar manualmente o usar Ctrl+Alt+F12 suspende el inicio automático hasta una nueva activación manual o el próximo inicio de la aplicación. Los errores no abren ventanas al arrancar y no provocan reintentos continuos. La detección de G HUB sigue evitando controladores simultáneos.
+
+## Reconexión, cierre y sensibilidad por perfil (0.2.14)
+
+- Desconectar y reconectar el G502 recupera el control sin confundir la extracción USB con una desconexión manual. Los mensajes tardíos de una conexión anterior no desactivan la nueva.
+- Los niveles, el DPI elegido y la velocidad del puntero de Windows se guardan dentro de cada perfil y se recuperan al abrir la aplicación o cambiar de perfil. Las preferencias anteriores se migran; duplicar o exportar un perfil conserva su sensibilidad.
+- Al salir se restaura el estado anterior del sensor; al abrir se aplica de nuevo el valor del perfil activo. La selección guardada no se sustituye por la lectura inicial del sensor.
+- Salir desde la bandeja termina la aplicación tanto con la ventana abierta como oculta. Una restauración USB fallida ya no bloquea indefinidamente el cierre; se conserva un diagnóstico local sin afirmar que la restauración se confirmó.
+
+111 pruebas automatizadas aprobadas, incluidas pruebas de cierre en procesos separados.

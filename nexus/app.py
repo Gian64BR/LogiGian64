@@ -102,7 +102,10 @@ class MainWindow(QMainWindow):
         self._closing = False
         self._auto_g502_enabled = False
         self._auto_g502_suspended = False
+        self._auto_g502_faulted = False
         self._auto_g502_attempted = set()
+        self._g502_generation = 0
+        self._g502_reconnect_waits = 0
         self.auto_g502_timer = QTimer(self)
         self.auto_g502_timer.setSingleShot(True)
         self.auto_g502_timer.timeout.connect(self.auto_connect_g502)
@@ -582,6 +585,7 @@ class MainWindow(QMainWindow):
         self.refresh_macros()
         self.refresh_bindings()
         self.update_color()
+        self.apply_profile_sensitivity()
         self.status("Perfil activo: " + self.store.active["name"])
 
     def chosen_profile(self):
@@ -605,6 +609,7 @@ class MainWindow(QMainWindow):
             self.refresh_profiles()
             self.refresh_macros()
             self.refresh_bindings()
+            self.apply_profile_sensitivity()
 
     def activate_profile(self):
         profile = self.chosen_profile()
@@ -648,6 +653,8 @@ class MainWindow(QMainWindow):
         self.refresh_profiles()
         self.refresh_macros()
         self.refresh_bindings()
+
+        self.apply_profile_sensitivity()
 
     def import_profile(self):
         if not self.leave_editor():
@@ -976,6 +983,7 @@ class MainWindow(QMainWindow):
 
     def emergency_stop(self):
         self._auto_g502_suspended = True
+        self._auto_g502_faulted = False
         self.auto_g502_timer.stop()
         self.stop_all()
         self.physical_held.clear()
@@ -988,17 +996,90 @@ class MainWindow(QMainWindow):
         self.status("Parada de emergencia · asignaciones pausadas y control directo restaurado")
 
     def g502_error(self, message):
+        if self._closing:
+            logging.warning("G502 durante el cierre: %s", message)
+            return
         self.stop_all()
         self.status(message)
         self.error(message)
 
     def enable_auto_g502(self):
         self._auto_g502_enabled = True
+        self.apply_profile_sensitivity()
         self.schedule_auto_g502()
+
+    def profile_sensitivity(self, device_id):
+        from .core import validate_sensitivity
+        saved = self.store.active.get('sensitivity', {}).get(device_id)
+        if saved is not None:
+            return saved.copy()
+        # Migrate the previous per-device preferences without losing a user's
+        # chosen point, even when it had not yet been confirmed by the sensor.
+        try:
+            preferences = self.preferences()
+            legacy = json.loads(preferences.value(f'sensitivity/{device_id}', '{}'))
+            clean = validate_sensitivity(legacy)
+            if 'levels' in clean and 'selected' in clean:
+                clean['dpi'] = clean['levels'][clean['selected']]
+            elif preferences.contains(f'dpi/{device_id}'):
+                clean['dpi'] = int(preferences.value(f'dpi/{device_id}'))
+            clean = validate_sensitivity(clean)
+        except (ValueError, TypeError):
+            clean = {}
+        if clean:
+            self.store.active.setdefault('sensitivity', {})[device_id] = clean
+            self.persist()
+        return clean.copy()
+
+    def save_profile_sensitivity(self, device_id, **values):
+        from .core import validate_sensitivity
+        settings = self.profile_sensitivity(device_id)
+        settings.update(values)
+        self.store.active.setdefault('sensitivity', {})[device_id] = validate_sensitivity(settings)
+        return self.persist()
+
+    def apply_profile_sensitivity(self):
+        if self._closing:
+            return
+        session = self.g502
+        if session and session.ready:
+            saved = self.profile_sensitivity(session.device.id)
+            desired = saved.get('dpi')
+            current = (getattr(session, 'dpi_state', None) or {}).get('current')
+            if desired is not None and desired != current:
+                try:
+                    session.set_dpi(desired, profile_id=self.store.active_id)
+                except (ValueError, OSError) as error:
+                    self.status('No se pudo recuperar el DPI del perfil: ' + str(error))
+        for device in self.devices:
+            if device.kind != 'mouse':
+                continue
+            speed = self.profile_sensitivity(device.id).get('pointer_speed')
+            if speed is not None:
+                try:
+                    if win.pointer_speed() != speed:
+                        win.set_pointer_speed(speed)
+                    if self.device and self.device.id == device.id:
+                        self.speed_slider.setValue(speed)
+                except OSError as error:
+                    self.status(str(error))
+                break
+        if self.device and hasattr(self, 'sensitivity_panel'):
+            self.sensitivity_panel.load_device(self.device)
 
     def schedule_auto_g502(self):
         connected = {(d.id, tuple(d.handles)) for d in self.devices}
         self._auto_g502_attempted.intersection_update(connected)
+        session = self.g502
+        if session and hasattr(session, 'mark_removed'):
+            old = (session.device.id, tuple(session.device.handles))
+            if old not in connected:
+                session.mark_removed()
+                if self._auto_g502_faulted:
+                    self._auto_g502_suspended = False
+                    self._auto_g502_faulted = False
+                self.physical_held.clear()
+                self.player.stop()
         if self._auto_g502_enabled and not self._auto_g502_suspended and not self._closing:
             self.auto_g502_timer.start(0)
 
@@ -1006,8 +1087,17 @@ class MainWindow(QMainWindow):
         if (not self._auto_g502_enabled or self._auto_g502_suspended or self._closing
                 or not self.input_ready or not self.armed.isChecked()):
             return
-        if self.g502 and ((self.g502.thread and self.g502.thread.is_alive()) or self.g502.needs_restore):
-            return
+        if self.g502:
+            if self.g502.thread and self.g502.thread.is_alive():
+                if getattr(self.g502, 'device_removed', None) and self.g502.device_removed.is_set() and self._g502_reconnect_waits < 50:
+                    self._g502_reconnect_waits += 1
+                    self.auto_g502_timer.start(100)
+                return
+            if getattr(self.g502, 'device_removed', None) and self.g502.device_removed.is_set():
+                self.g502.abandon_removed()
+                self.g502 = None
+            elif self.g502.needs_restore:
+                return
         device = next((d for d in self.devices if (d.vid, d.pid) == ('046D', 'C08B')
                        and (d.id, tuple(d.handles)) not in self._auto_g502_attempted), None)
         if device:
@@ -1015,14 +1105,53 @@ class MainWindow(QMainWindow):
             self.start_g502(device, automatic=True)
 
     def auto_g502_error(self, message):
+        if self._closing:
+            logging.warning("G502 durante el cierre: %s", message)
+            return
         # A background start must not open a dialog or repeatedly reclaim a
         # device. Manual activation remains available after resolving the cause.
         self._auto_g502_suspended = True
+        self._auto_g502_faulted = True
         self.auto_g502_timer.stop()
         self.stop_all()
         self.status(message)
 
     def hardware_changed(self, data):
+        if self._closing or data.get('generation', self._g502_generation) != self._g502_generation:
+            return
+        kind = data['kind']
+        if kind in ('dpi', 'dpi_error') and (data.get('profile_id') or self.store.active_id) != self.store.active_id:
+            return
+        if kind == 'session_error':
+            # Raw Input removal notifications can arrive after the HID error.
+            # Refresh first so unplugging is not mistaken for a permanent fault.
+            self.refresh_devices()
+            removed = getattr(self.g502, 'device_removed', None)
+            if removed and removed.is_set():
+                return
+            (self.auto_g502_error if data['automatic'] else self.g502_error)(data['message'])
+            return
+        if kind == 'stopped' and data.get('removed'):
+            self._auto_g502_attempted.clear()
+            self._g502_reconnect_waits = 0
+            self.schedule_auto_g502()
+        if kind == 'dpi':
+            owner = data.get('profile_id') or self.store.active_id
+            if owner != self.store.active_id:
+                return
+            if 'dpi' not in self.profile_sensitivity(data['device_id']):
+                self.save_profile_sensitivity(data['device_id'], dpi=data['current'])
+        if kind == 'ready' and data.get('dpi'):
+            state = data['dpi']
+            saved = self.profile_sensitivity(data['device_id'])
+            try:
+                desired = saved.get('dpi', state['current'])
+                if desired != state['current']:
+                    self.g502.set_dpi(desired, profile_id=self.store.active_id)
+                if 'dpi' not in saved:
+                    self.save_profile_sensitivity(data['device_id'], dpi=desired)
+            except (TypeError, ValueError, OSError) as error:
+                self.status('No se pudo recuperar el DPI guardado: ' + str(error))
         if hasattr(self, 'lighting_panel'):
             self.lighting_panel.hardware_changed(data)
         if hasattr(self, 'sensitivity_panel'):
@@ -1038,6 +1167,7 @@ class MainWindow(QMainWindow):
             return self.error("El control directo disponible corresponde al G502 HERO 046D:C08B.")
         if self.g502 and self.g502.thread and self.g502.thread.is_alive():
             self._auto_g502_suspended = True
+            self._auto_g502_faulted = False
             self.auto_g502_timer.stop()
             self.stop_all()
             if self.g502.close():
@@ -1046,6 +1176,7 @@ class MainWindow(QMainWindow):
         if self.g502 and self.g502.needs_restore and not self.g502.close():
             return
         self._auto_g502_suspended = False
+        self._auto_g502_faulted = False
         from .g502 import G502Session, ghub_running, close_ghub
         try:
             if ghub_running():
@@ -1063,9 +1194,14 @@ class MainWindow(QMainWindow):
 
     def start_g502(self, device, automatic=False):
         from .g502 import G502Session
-        self.g502 = G502Session(device, self.events.input.emit, self.events.error.emit,
-                                self.events.auto_plugin_error.emit if automatic else self.events.plugin_error.emit,
-                                self.events.hardware.emit)
+        self._g502_generation += 1
+        self._g502_reconnect_waits = 0
+        generation = self._g502_generation
+        def hardware(data):
+            self.events.hardware.emit({**data, 'generation': generation})
+        def error(message):
+            hardware({'kind': 'session_error', 'device_id': device.id, 'message': str(message), 'automatic': automatic})
+        self.g502 = G502Session(device, self.events.input.emit, self.events.error.emit, error, hardware)
         buttons = {b["trigger"]["button"] for b in self.store.active["bindings"]
                    if b["device_id"] == device.id and b["trigger"]["type"] == "gbutton" and b["enabled"]}
         buttons |= {c["button"] for c in self.store.active.get("disabled_controls", [])
@@ -1217,7 +1353,10 @@ class MainWindow(QMainWindow):
 
     def apply_speed(self):
         try:
-            win.set_pointer_speed(self.speed_slider.value())
+            speed = self.speed_slider.value()
+            win.set_pointer_speed(speed)
+            if self.device:
+                self.save_profile_sensitivity(self.device.id, pointer_speed=speed)
             self.status("Velocidad global del puntero aplicada a Windows. El DPI del sensor no cambió.")
         except (OSError, ValueError) as error:
             self.error(error)
@@ -1239,9 +1378,21 @@ class MainWindow(QMainWindow):
         self.auto_g502_timer.stop()
         self.player.stop()
         if self.g502 and not self.g502.close():
-            self._closing = False
-            event.ignore()
-            return
+            # Exit must not be vetoed forever by a detached USB transport.
+            # Keep the recovery data and report the failure honestly, then let
+            # the process end; never kill unrelated applications or processes.
+            session = self.g502
+            snapshot = {name: getattr(session, name, None) for name in
+                        ('original_mode', 'original_map', 'original_dpi', 'changed_mode', 'changed_map', 'changed_dpi')}
+            snapshot['device_id'] = session.device.id
+            try:
+                (self.store.directory / 'g502-restoration-pending.json').write_text(
+                    json.dumps(snapshot, indent=2), encoding='utf-8')
+            except OSError:
+                logging.exception('No se pudo conservar el diagnóstico de restauración')
+            logging.warning('Salida con restauración G502 sin confirmar: %s', snapshot)
+            if not session.thread or not session.thread.is_alive():
+                session.discard()
         self.player.close()
         win.unregister_input()
         QApplication.instance().removeNativeEventFilter(self.native)

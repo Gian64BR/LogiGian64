@@ -1,11 +1,10 @@
-LogiGian64 0.2.22 — Control RGB e iconos de macro.
+LogiGian64 0.2.23 — Creación de macros y tarjetas de perfiles.
 
-- El color personalizado cambia solo el icono M de la biblioteca; los nombres y asignaciones permanecen blancos.
-- Editar un color activa su envío al mouse. Los cambios realizados durante una confirmación vuelven a enviarse.
-- Seleccionar color desde ciclo o apagado cambia a color fijo.
-- Vista previa con las barras DPI y el logotipo coloreados, sin bloques fuera del mouse.
-- Panel RGB con desplazamiento para ventanas pequeñas.
-- Se conservan las mejoras anteriores, los perfiles y el cierre completo al instalar o desinstalar.
+- Crear macro abre directamente la selección del tipo, sin pedir el nombre en una ventana separada.
+- Nombre editable en la parte superior, con numeración automática que evita nombres Macro N ya existentes en el perfil.
+- Iconos de tipos compartidos con el editor para mantener el mismo diseño.
+- Perfiles en tarjetas turquesa, organizadas automáticamente en filas según el ancho de la ventana, con indicador de perfil en uso y acciones de renombrar y eliminar.
+- Se conservan las funciones anteriores, los perfiles y la configuración RGB.
 
-135 pruebas automatizadas aprobadas. El G502 conectado confirmó parámetros en ambas zonas y se restauró su estado tras la prueba.
-Instalador local para revisión; no publicado en GitHub.
+138 pruebas automatizadas aprobadas. Instalador local para revisión; no publicado en GitHub.
+Cierra LogiGian64 antes de instalar.

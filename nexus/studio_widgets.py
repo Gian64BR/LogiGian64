@@ -48,10 +48,11 @@ QStatusBar { background: #080808; color: #96969b; border-top: 1px solid #222; }
 QDialog { background: #171719; }
 QListWidget#profileList::item { padding: 0; border: none; background: transparent; }
 QListWidget#profileList::item:selected { background: transparent; }
-QFrame#profileCard { background: #202629; border: 1px solid #343f42; border-radius: 16px; }
-QFrame#profileCard:hover { border-color: #568d88; }
-QFrame#profileCard[selected="true"] { background: #173e3c; border: 1px solid #62d7c8; }
-QFrame#profileCard QLabel { background: transparent; }
+QFrame#profileCard { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #19c9e9,stop:1 #00afd7); border: 2px solid transparent; border-radius: 16px; }
+QFrame#profileCard:hover { border-color: #b6f6ff; }
+QFrame#profileCard[selected="true"] { border: 2px solid white; }
+QFrame#profileCard QLabel { background: transparent; color: #002d3a; }
+QFrame#profileCard QLabel#profileState { background: #003b4d; color: white; border-radius: 9px; padding: 4px 9px; font-size: 11px; }
 QPushButton#profileAction { background: transparent; border: none; border-radius: 10px; padding: 0; }
 QPushButton#profileAction:hover { background: #315551; }
 """
@@ -106,16 +107,25 @@ class ProfileCard(QFrame):
         super().__init__()
         self.setObjectName('profileCard')
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        row = QHBoxLayout(self)
-        row.setContentsMargins(22, 15, 16, 15)
-        text = QVBoxLayout()
-        title = label(profile['name'], 'sectionTitle')
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 14)
+        layout.setSpacing(8)
+        top = QHBoxLayout()
+        top.addWidget(label('PERFIL', 'eyebrow'))
+        top.addStretch()
+        if active:
+            top.addWidget(label('EN USO', 'profileState'))
+        layout.addLayout(top)
+        title = label(profile['name'], 'sectionTitle', True)
+        title.setMaximumHeight(60)
+        title.setToolTip(profile['name'])
         title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        text.addWidget(title)
-        description = label(f"{len(profile['macros'])} macros" + ('  ·  ACTIVO' if active else ''), 'muted')
+        layout.addWidget(title, 1)
+        description = label(f"{len(profile['macros'])} macros", 'muted')
         description.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        text.addWidget(description)
-        row.addLayout(text, 1)
+        row = QHBoxLayout()
+        row.addWidget(description, 1)
+        layout.addLayout(row)
         for kind, tip, signal in [('rename', 'Renombrar perfil', self.rename), ('delete', 'Eliminar perfil', self.remove)]:
             control = QPushButton()
             control.setObjectName('profileAction')
@@ -282,40 +292,13 @@ class MacroTypeButton(QPushButton):
         super().__init__()
         self.mode = mode
         self.setFixedSize(120, 120)
+        self.icon_scale = 2.5
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setAccessibleName(MODES[mode])
         self.setToolTip(MODES[mode])
 
     def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor("#252527" if self.underMouse() or self.hasFocus() else "#191919"))
-        p.drawRoundedRect(QRectF(0, 0, 120, 120), 3, 3)
-        p.translate(60, 60)
-        p.setPen(QPen(QColor("#ffffff"), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        if self.mode == "once":
-            p.drawLine(-13, 0, 12, 0)
-            p.drawLine(5, -8, 13, 0)
-            p.drawLine(13, 0, 5, 8)
-        elif self.mode == "hold":
-            p.drawArc(QRectF(-11, -12, 22, 24), -70 * 16, 300 * 16)
-            p.drawLine(4, 11, -1, 9)
-            p.drawLine(4, 11, 2, 16)
-        elif self.mode == "toggle":
-            p.drawRoundedRect(QRectF(-17, -10, 34, 20), 10, 10)
-            p.setBrush(QColor("#ffffff"))
-            p.drawEllipse(QPointF(7, 0), 7, 7)
-        elif self.mode == "latch":
-            p.drawRoundedRect(QRectF(-15, -12, 30, 24), 4, 4)
-            p.drawLine(-5, -6, -5, 6)
-            p.drawLine(5, -6, 5, 6)
-        else:
-            for x, y in ((0, 0), (-8, -3), (-16, -6)):
-                p.setBrush(QColor("#ffffff") if x == -16 else QColor("#191919"))
-                p.drawRoundedRect(QRectF(x, y, 15, 15), 3, 3)
-        p.end()
+        MacroModeButton.paintEvent(self, event)
 
 
 class MacroModeButton(QPushButton):
@@ -337,6 +320,8 @@ class MacroModeButton(QPushButton):
         p.setBrush(QColor('#00232a' if selected else '#252527' if self.underMouse() else '#191919'))
         p.drawRoundedRect(QRectF(.5, .5, self.width()-1, self.height()-1), 3, 3)
         p.translate(self.width()/2, self.height()/2)
+        scale = getattr(self, 'icon_scale', 1)
+        p.scale(scale, scale)
         p.setPen(QPen(color, 1.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
         p.setBrush(Qt.BrushStyle.NoBrush)
         if self.mode == 'once':
@@ -809,7 +794,7 @@ class TypeDialog(QDialog):
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setWindowTitle("Selecciona el tipo de macro")
         self.setStyleSheet("QDialog { background: #000000; }")
-        self.setMinimumSize(900, 640)
+        self.setMinimumSize(900, 540)
         if parent:
             self.resize(parent.size())
             self.move(parent.mapToGlobal(QPoint(0, 0)))
@@ -819,10 +804,14 @@ class TypeDialog(QDialog):
         layout.setContentsMargins(16, 14, 16, 28)
         layout.addWidget(BackArrow(self.reject), 0, Qt.AlignmentFlag.AlignLeft)
         layout.addSpacing(32)
-        title = label(macro_name)
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size:24px; font-weight:600; color:white; background:transparent;")
-        layout.addWidget(title)
+        self.default_name = macro_name
+        self.name_edit = QLineEdit(macro_name)
+        self.name_edit.setMaxLength(100)
+        self.name_edit.setAccessibleName('Nombre de la macro')
+        self.name_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.name_edit.setStyleSheet('QLineEdit {font-size:24px; font-weight:600; color:white; background:transparent; border:none; border-bottom:1px solid #555; padding:8px;} QLineEdit:focus {border-bottom:1px solid #00afd7;}')
+        self.name_edit.setMaximumWidth(560)
+        layout.addWidget(self.name_edit, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addStretch(2)
         prompt = label("SELECCIONA EL TIPO DE MACRO QUE CREAR")
         prompt.setStyleSheet("font-size:13px; font-weight:700; letter-spacing:0.4px; background:transparent;")
@@ -850,6 +839,10 @@ class TypeDialog(QDialog):
         row.addStretch()
         layout.addLayout(row)
         layout.addStretch(3)
+
+    @property
+    def macro_name(self):
+        return self.name_edit.text().strip() or self.default_name
 
     def choose(self, mode):
         self.mode = mode

@@ -128,7 +128,7 @@ class MacroEditorTests(unittest.TestCase):
         self.window.macro_color_custom = True
         self.assertTrue(self.window.commit_draft())
         with patch('nexus.studio.QInputDialog.getText',return_value=('Nueva',True)), \
-             patch('nexus.studio.TypeDialog',return_value=SimpleNamespace(mode='once',exec=lambda: QDialog.DialogCode.Accepted)):
+             patch('nexus.studio.TypeDialog',return_value=SimpleNamespace(mode='once',macro_name='Nueva',exec=lambda: QDialog.DialogCode.Accepted)):
             new_id = self.window.new_macro()
         self.assertEqual(self.window.macro_color,DEFAULT_MACRO_COLOR)
         with patch('nexus.studio.QColorDialog.getColor',return_value=QColor('#00aa44')):

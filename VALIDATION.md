@@ -1,3 +1,10 @@
+# Verificación local de LogiGian64 0.2.23
+
+- 138 pruebas automatizadas: numeración sin ventana inicial, nombre editable, cancelación sin crear registros, distribución adaptable de tarjetas y activación del perfil seleccionado incluidas.
+- Capturas de selección del tipo y de las tarjetas turquesa revisadas a 1280 × 760.
+- Iconos de selección y editor utilizan el mismo dibujo vectorial.
+- Compilación local para probar; sin publicación en GitHub.
+
 # Verificación local de LogiGian64 0.2.22
 
 - 135 pruebas automatizadas aprobadas.

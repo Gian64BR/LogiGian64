@@ -9,7 +9,7 @@ from PySide6.QtGui import QColor, QCursor
 from PySide6.QtWidgets import (QWidget, QFrame, QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget,
     QScrollArea, QComboBox, QCheckBox, QLineEdit, QSpinBox, QTableWidget, QAbstractItemView,
     QHeaderView, QListWidget, QInputDialog, QDialog, QMessageBox, QColorDialog, QSlider,
-    QFileDialog, QMenu, QPushButton, QApplication, QListWidgetItem, QSizePolicy, QLayout)
+    QFileDialog, QMenu, QPushButton, QApplication, QListWidgetItem, QSizePolicy, QLayout, QListView)
 
 from .app import MainWindow, panel
 from .core import MODES, MAX_EVENTS, new_id, validate_macro, DEFAULT_MACRO_COLOR, macro_label_color, macro_badge_color
@@ -143,7 +143,12 @@ class StudioWindow(MainWindow):
         layout.addWidget(label('Selecciona un perfil. Haz doble clic para activarlo.', 'muted'))
         self.profile_list = QListWidget()
         self.profile_list.setObjectName('profileList')
-        self.profile_list.setSpacing(7)
+        self.profile_list.setViewMode(QListView.ViewMode.IconMode)
+        self.profile_list.setResizeMode(QListView.ResizeMode.Adjust)
+        self.profile_list.setMovement(QListView.Movement.Static)
+        self.profile_list.setWrapping(True)
+        self.profile_list.setGridSize(QSize(312, 218))
+        self.profile_list.setSpacing(8)
         self.profile_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.profile_list.currentRowChanged.connect(self.update_profile_cards)
         self.profile_list.itemDoubleClicked.connect(lambda: self.activate_profile())
@@ -163,7 +168,7 @@ class StudioWindow(MainWindow):
             item = self.profile_list.item(row)
             item.setText('')
             item.setData(Qt.ItemDataRole.UserRole, profile['id'])
-            item.setSizeHint(QSize(300, 96))
+            item.setSizeHint(QSize(296, 202))
             card = ProfileCard(profile, profile['id'] == self.store.active_id)
             card.selected.connect(lambda r=row: self.profile_list.setCurrentRow(r))
             card.activated.connect(lambda r=row: self.profile_card_action(r, self.activate_profile))
@@ -790,13 +795,15 @@ class StudioWindow(MainWindow):
             return
         if len(self.store.active["macros"]) >= 200:
             return self.error("Un perfil admite hasta 200 macros.")
-        name, ok = QInputDialog.getText(self, "Nueva macro", "Nombre de la macro", text="Macro " + str(len(self.store.active["macros"]) + 1))
-        if not ok or not name.strip():
-            return
-        dialog = TypeDialog(self, name.strip())
+        names = {m['name'].strip().casefold() for m in self.store.active['macros']}
+        number = 1
+        while f'macro {number}' in names or str(number) in names:
+            number += 1
+        name = f'Macro {number}'
+        dialog = TypeDialog(self, name)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        macro = validate_macro({"id": new_id(), "name": name.strip(), "mode": dialog.mode,
+        macro = validate_macro({"id": new_id(), "name": dialog.macro_name, "mode": dialog.mode,
                                 "events": [], "color": DEFAULT_MACRO_COLOR, 'custom_color': False, "standard_delay": True, "standard_delay_ms": 50})
         self.store.active["macros"].append(macro)
         if self.persist():

@@ -159,8 +159,8 @@ class MacroEngine:
         def run(events, interrupt=False):
             for index, event in enumerate(events):
                 delay = event["delay_ms"]
-                if macro.get("standard_delay") and event["type"] != "wait" and index:
-                    delay = macro.get("standard_delay_ms", 50)
+                if macro.get("standard_delay") and event["type"] != "wait":
+                    delay = macro.get("standard_delay_ms", 50) if index and events[index-1]['type'] != 'wait' else 0
                 if mode == "latch":
                     delay = 0
                 if not self._wait(session, delay / 1000, interrupt):
@@ -168,10 +168,12 @@ class MacroEngine:
                 if event["type"] == "wait":
                     continue
                 if event["type"] == "text":
-                    for offset in range(0, len(event["text"]), 32):
-                        if not self._wait(session, 0, interrupt):
+                    interval = macro.get('standard_delay_ms', 50) if macro.get('standard_delay') else event.get('char_delay_ms', 0)
+                    size = 1 if interval else 32
+                    for offset in range(0, len(event["text"]), size):
+                        if not self._wait(session, interval / 1000 if offset else 0, interrupt):
                             return False
-                        self.sender({**event, "text": event["text"][offset:offset + 32]})
+                        self.sender({**event, "text": event["text"][offset:offset + size]})
                     continue
                 identity = event_identity(event)
                 # A quick release can interrupt the press section before its down.

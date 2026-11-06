@@ -694,10 +694,12 @@ class MainWindow(QMainWindow):
         return next((m for m in self.store.active["macros"] if m["id"] == self.macro_id), None)
 
     def refresh_macros(self, select_id=None):
+        from .core import macro_label_color
         self._loading = True
         self.macro_list.clear()
         for macro in self.store.active["macros"]:
             self.macro_list.addItem(macro["name"])
+            self.macro_list.item(self.macro_list.count()-1).setForeground(QColor(macro_label_color(macro)))
         target = select_id or self.macro_id
         index = next((i for i, m in enumerate(self.store.active["macros"]) if m["id"] == target), 0)
         self.macro_list.setCurrentRow(index if self.store.active["macros"] else -1)

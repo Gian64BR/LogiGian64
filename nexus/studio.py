@@ -12,11 +12,11 @@ from PySide6.QtWidgets import (QWidget, QFrame, QVBoxLayout, QHBoxLayout, QGridL
     QFileDialog, QMenu, QPushButton, QApplication, QListWidgetItem)
 
 from .app import MainWindow, panel
-from .core import MODES, MAX_EVENTS, new_id, validate_macro
+from .core import MODES, MAX_EVENTS, new_id, validate_macro, DEFAULT_MACRO_COLOR, macro_label_color
 from .widgets import label, button
 from .studio_widgets import HubCard, MacroLibrary, AssignmentCanvas, TypeDialog, LearnBindingDialog, RailButton, BackArrow, MacroModeButton
-from .timeline import TimelineBlock, TimelineTrack, FlowLayout, timeline_tokens, reorder_tokens
-from .dialogs import AddActionDialog
+from .timeline import TimelineBlock, TimelineTrack, FlowLayout, timeline_tokens, reorder_tokens, editor_events
+from .dialogs import AddActionDialog, DelayDialog
 from . import windows as win
 from .studio_widgets import ConnectionLabel, ProfileCard
 
@@ -42,13 +42,24 @@ class StudioWindow(MainWindow):
         self.phase = "press"
         self.phase_drafts = {phase: [] for phase in ("press", "hold", "release")}
         self._editor_loading = False
-        self.macro_color = "#9b0037"
+        self.macro_color = DEFAULT_MACRO_COLOR
+        self.macro_color_custom = False
         self.timeline_pending = False
         super().__init__(store)
         from . import __version__
         self.setWindowTitle(f"LogiGian64 {__version__} — Macros y asignaciones")
 
     def eventFilter(self, watched, event):
+        if not self.recording and event.type() == QEvent.Type.FocusIn and isinstance(watched, QWidget):
+            for row in range(self.table.rowCount()):
+                spin = self.table.cellWidget(row, 3)
+                if spin and (watched is spin or spin.isAncestorOf(watched)):
+                    self.table.selectRow(row)
+                    break
+        if not self.recording and event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Delete:
+            if watched is self.table or self.table.isAncestorOf(watched):
+                self.remove_step()
+                return True
         # Raw Input records keys separately. Do not let Qt activate focused
         # navigation buttons, defaults, menus or shortcuts while recording.
         if self.recording and event.type() in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease, QEvent.Type.ShortcutOverride, QEvent.Type.Shortcut):
@@ -387,7 +398,7 @@ class StudioWindow(MainWindow):
         self.mode_combo = QComboBox()
         self.mode_combo.hide()
         self.mode_buttons = {}
-        for mode, icon in (("once", "→"), ("hold", "⟳"), ("toggle", "◉"), ("sequence", "▣"), ("latch", "⏸")):
+        for mode in ('once', 'hold', 'toggle', 'sequence', 'latch'):
             self.mode_combo.addItem(MODES[mode], mode)
             control = MacroModeButton(mode)
             control.setObjectName("mode")
@@ -418,7 +429,12 @@ class StudioWindow(MainWindow):
         self.show_releases.setChecked(True)
         self.show_releases.toggled.connect(self.render_timeline)
         options.addWidget(self.show_releases)
-        options.addWidget(button("●  COLOR DE MACRO", self.choose_macro_color))
+        color_row = QHBoxLayout()
+        color_row.addWidget(button('COLOR DE MACRO', self.choose_macro_color), 1)
+        self.reset_color_button = button('RESTABLECER COLOR', self.reset_macro_color)
+        self.reset_color_button.setToolTip('Restablecer el rojo del editor y los nombres blancos predeterminados.')
+        color_row.addWidget(self.reset_color_button)
+        options.addLayout(color_row)
         self.record_mouse = QCheckBox("Incluir botones y rueda al grabar")
         self.record_mouse.setChecked(True)
         options.addWidget(self.record_mouse)
@@ -430,7 +446,7 @@ class StudioWindow(MainWindow):
         for text, phase in (("AL PULSAR", "press"), ("DURANTE PULSACIÓN", "hold"), ("AL SOLTAR", "release")):
             self.phase_combo.addItem(text, phase)
         self.phase_combo.currentIndexChanged.connect(self.change_phase)
-        el.addWidget(self.phase_combo, 0, Qt.AlignmentFlag.AlignLeft)
+        self.phase_combo.hide()  # Internal phase routing; all three are visible below.
         self.timeline_scroll = QScrollArea()
         self.timeline_scroll.setWidgetResizable(True)
         self.timeline_scroll.setMinimumHeight(150)
@@ -442,13 +458,42 @@ class StudioWindow(MainWindow):
         self.timeline = FlowLayout(self.timeline_content)
         self.timeline.setContentsMargins(8, 16, 8, 16)
         self.timeline.setSpacing(12)
-        self.timeline_scroll.setWidget(self.timeline_content)
+        self.single_timeline_content = self.timeline_content
+        self.single_timeline = self.timeline
+        self.timeline_wrapper = QWidget()
+        wrapper = QVBoxLayout(self.timeline_wrapper)
+        wrapper.setContentsMargins(0, 0, 0, 0)
+        wrapper.addWidget(self.single_timeline_content)
+        self.sequence_container = QWidget()
+        sections = QVBoxLayout(self.sequence_container)
+        sections.setContentsMargins(0, 0, 0, 0)
+        sections.setSpacing(18)
+        self.phase_tracks, self.phase_layouts, self.phase_headers, self.phase_plus = {}, {}, {}, {}
+        for title, phase in (('AL PULSAR', 'press'), ('AL MANTENER', 'hold'), ('AL SOLTAR', 'release')):
+            section = QWidget()
+            section_layout = QVBoxLayout(section)
+            section_layout.setContentsMargins(0, 0, 0, 0)
+            section_layout.setSpacing(4)
+            heading = button(title, lambda checked=False, p=phase: self.select_phase(p))
+            heading.setCheckable(True)
+            heading.setFixedSize(176, 34)
+            heading.setObjectName('mode')
+            section_layout.addWidget(heading, 0, Qt.AlignmentFlag.AlignLeft)
+            track = TimelineTrack()
+            track.setMinimumHeight(90)
+            track.moved.connect(lambda source, destination, p=phase: self.reorder_phase(p, source, destination))
+            flow = FlowLayout(track)
+            self.phase_tracks[phase], self.phase_layouts[phase], self.phase_headers[phase] = track, flow, heading
+            section_layout.addWidget(track)
+            sections.addWidget(section)
+        wrapper.addWidget(self.sequence_container)
+        self.sequence_container.hide()
+        self.timeline_scroll.setWidget(self.timeline_wrapper)
         el.addWidget(self.timeline_scroll, 1)
         self.record_button = button("●  GRABAR PULSACIONES", self.toggle_record)
         self.record_button.setStyleSheet("background:#790028; padding:12px 20px")
         controls = QHBoxLayout()
         controls.addWidget(self.record_button)
-        controls.addWidget(button("+  AÑADIR", self.action_menu))
         controls.addWidget(button("EDITAR TIEMPOS / PASOS", self.toggle_table))
         controls.addStretch()
         self.sequence_stats = label("", "muted")
@@ -462,6 +507,12 @@ class StudioWindow(MainWindow):
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.table.setMaximumHeight(220)
+        self.table.installEventFilter(self)
+        self.table.viewport().installEventFilter(self)
+        self.table.itemSelectionChanged.connect(self.highlight_steps)
+        self.table.cellDoubleClicked.connect(self.edit_table_text)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.table_text_menu)
         self.table.hide()
         el.addWidget(self.table)
         edit = QHBoxLayout()
@@ -476,8 +527,8 @@ class StudioWindow(MainWindow):
         bottom = QHBoxLayout()
         bottom.addStretch()
         bottom.addWidget(button("RESTABLECER", self.reset_macro))
-        bottom.addWidget(button("PRUEBA ÚNICA EN 3 S", self.play_current))
-        bottom.addWidget(button("DETENER", self.stop_all))
+        self.apply_steps_button = button('APLICAR', self.apply_steps)
+        bottom.addWidget(self.apply_steps_button)
         bottom.addWidget(button("GUARDAR", self.save_macro, True))
         bottom.addStretch()
         el.addLayout(bottom)
@@ -558,11 +609,13 @@ class StudioWindow(MainWindow):
         self.binding_list.blockSignals(True)
         self.binding_list.clear()
         names = {}
+        name_colors = {}
         for macro in self.store.active["macros"]:
             slots = [b.get("slot", "") for b in self.store.active["bindings"] if self.device and b["device_id"] == self.device.id and b["macro_id"] == macro["id"]]
             self.assign_library.addItem(macro["name"] + ("    " + ", ".join(filter(None, slots)) if slots else ""))
             item = self.assign_library.item(self.assign_library.count() - 1)
             item.setData(Qt.ItemDataRole.UserRole, macro["id"])
+            item.setForeground(QColor(macro_label_color(macro)))
             item.setToolTip(MODES[macro.get("mode", "once")] + " · Doble clic para editar")
         if self.device:
             for binding in self.store.active["bindings"]:
@@ -576,10 +629,13 @@ class StudioWindow(MainWindow):
                 paused = self.device.kind == 'keyboard' and not binding.get('enabled', True)
                 self.binding_list.addItem(slot + " → " + macro["name"] + (' · DESACTIVADA' if paused else ''))
                 self.binding_list.item(self.binding_list.count() - 1).setData(Qt.ItemDataRole.UserRole, slot)
+                self.binding_list.item(self.binding_list.count() - 1).setForeground(QColor(macro_label_color(macro)))
                 names[slot] = macro["name"]
+                name_colors[slot] = macro_label_color(macro)
             self.canvas.disabled = {c["slot"] for c in self.store.active.get("disabled_controls", [])
                                     if c["device_id"] == self.device.id}
             self.canvas.names = names
+            self.canvas.name_colors = name_colors
             self.canvas.paused = {b.get('slot') for b in self.store.active['bindings']
                                   if b['device_id'] == self.device.id and not b.get('enabled', True)}
             self.canvas.overlay.update()
@@ -715,7 +771,7 @@ class StudioWindow(MainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         macro = validate_macro({"id": new_id(), "name": name.strip(), "mode": dialog.mode,
-                                "events": [], "standard_delay": True, "standard_delay_ms": 50})
+                                "events": [], "color": DEFAULT_MACRO_COLOR, 'custom_color': False, "standard_delay": True, "standard_delay_ms": 50})
         self.store.active["macros"].append(macro)
         if self.persist():
             self.refresh_macros(macro["id"])
@@ -733,7 +789,8 @@ class StudioWindow(MainWindow):
             self.mode_combo.setCurrentIndex(self.mode_combo.findData(macro.get("mode", "once")))
             self.standard_delay.setChecked(macro.get("standard_delay", False))
             self.delay_ms.setValue(macro.get("standard_delay_ms", 50))
-            self.macro_color = macro.get("color", "#9b0037")
+            self.macro_color = macro.get("color", DEFAULT_MACRO_COLOR)
+            self.macro_color_custom = macro.get('custom_color', self.macro_color.lower() != DEFAULT_MACRO_COLOR)
             if macro.get("mode") == "sequence":
                 self.draft = copy.deepcopy(self.phase_drafts["press"])
         self._editor_loading = False
@@ -754,6 +811,39 @@ class StudioWindow(MainWindow):
         self.phase = self.phase_combo.itemData(index)
         self.draft = copy.deepcopy(self.phase_drafts[self.phase])
         self.render_events()
+
+    def select_phase(self, phase):
+        if self.recording:
+            self.finish_recording()
+        if phase != self.phase:
+            self.phase_combo.setCurrentIndex(self.phase_combo.findData(phase))
+        else:
+            self.phase_headers[phase].setChecked(True)
+
+    def phase_action_menu(self, phase):
+        if self.recording:
+            return
+        self.select_phase(phase)
+        self.action_menu()
+
+    def select_phase_step(self, phase, row):
+        if phase is not None:
+            self.select_phase(phase)
+        self.select_step(row)
+
+    def delete_phase_step(self, phase, row):
+        if phase is not None:
+            self.select_phase(phase)
+        self.delete_timeline_step(row)
+
+    def edit_phase_delay(self, phase, row, value):
+        if phase is not None:
+            self.select_phase(phase)
+        self.edit_timeline_delay(row, value)
+
+    def reorder_phase(self, phase, source, destination):
+        self.select_phase(phase)
+        self.reorder_timeline(source, destination)
 
     def mode_changed(self, index):
         if self._editor_loading:
@@ -780,11 +870,13 @@ class StudioWindow(MainWindow):
         self.editing_mode = mode
         for key, control in self.mode_buttons.items():
             control.setChecked(key == mode)
-        self.phase_combo.setVisible(mode == "sequence")
+        self.phase_combo.hide()
+        self.sequence_container.setVisible(mode == 'sequence')
+        self.single_timeline_content.setVisible(mode != 'sequence')
         self.mode_description.setText({"once": "Se ejecuta una vez al pulsar el botón asignado.",
             "hold": "Se repite mientras mantienes pulsado el botón. Se detiene al soltar.",
             "toggle": "Una pulsación inicia el bucle. La siguiente pulsación lo detiene.",
-            "sequence": "Configura Al pulsar, Durante pulsación y Al soltar por separado.",
+            "sequence": "Configura Al pulsar, Al mantener y Al soltar. Cada fase tiene su propio botón +.",
             "latch": "Primera pulsación: mantiene las teclas y clics añadidos. Segunda pulsación: los suelta. Sin repeticiones ni temporizador; se ignoran las liberaciones grabadas."}[mode])
         self.standard_delay.setVisible(mode != "latch")
         self.delay_ms.setVisible(mode != "latch")
@@ -806,14 +898,10 @@ class StudioWindow(MainWindow):
     def apply_standard_delay(self, *args):
         if self._editor_loading:
             return
-        if not self.standard_delay.isChecked() or self.mode_combo.currentData() == "latch":
-            self.render_events()
-            return
         self.read_draft()
-        for events in [self.draft, *self.phase_drafts.values()]:
-            for event in events:
-                if event["type"] != "wait":
-                    event["delay_ms"] = self.delay_ms.value()
+        standard = self.delay_ms.value() if self.standard_delay.isChecked() and self.mode_combo.currentData() != 'latch' else None
+        self.draft = editor_events(self.draft, standard, trim_leading=True)
+        self.phase_drafts = {phase: editor_events(events, standard, trim_leading=True) for phase, events in self.phase_drafts.items()}
         self.render_events()
 
     def capture_event(self, event):
@@ -833,7 +921,7 @@ class StudioWindow(MainWindow):
         try:
             value = {**macro, "name": self.macro_name.text(), "mode": self.mode_combo.currentData() or "once",
                      "standard_delay": self.standard_delay.isChecked(), "standard_delay_ms": self.delay_ms.value(),
-                     "color": self.macro_color, "events": copy.deepcopy(self.read_draft())}
+                     "color": self.macro_color, 'custom_color': self.macro_color_custom, "events": copy.deepcopy(self.read_draft())}
             if value["mode"] == "sequence":
                 value["sections"] = self.read_sections()
             else:
@@ -991,37 +1079,132 @@ class StudioWindow(MainWindow):
     def render_event(self, row, event):
         if self.mode_combo.currentData() == "latch":
             event["delay_ms"] = 0
-        elif self.standard_delay.isChecked() and event["type"] != "wait":
-            event["delay_ms"] = self.delay_ms.value()
         super().render_event(row, event)
-        if event["type"] != "wait":
-            self.table.cellWidget(row, 3).setEnabled(not self.standard_delay.isChecked() and self.mode_combo.currentData() != "latch")
-            if self.mode_combo.currentData() == "latch":
-                self.table.cellWidget(row, 3).setSpecialValueText("Sin retardo")
+        spin = self.table.cellWidget(row, 3)
+        if event['type'] == 'text':
+            spin.setValue(event.get('char_delay_ms', 0))
+            spin.setToolTip('Retardo entre letras; la primera se escribe inmediatamente.')
+        if event['type'] == 'wait':
+            self.table.item(row, 1).setText('Retardo')
+        spin.setEnabled(not self.standard_delay.isChecked() and self.mode_combo.currentData() != 'latch')
+        spin.installEventFilter(self)
+        spin.lineEdit().installEventFilter(self)
+        spin.lineEdit().selectionChanged.connect(lambda r=row: self.table.selectRow(r))
         if not self.timeline_pending:
             self.timeline_pending = True
             self.timeline_timer.start(0)
 
     def render_events(self):
+        if not self.recording and not self._editor_loading and self.mode_combo.currentData() != 'latch':
+            self.draft = editor_events(self.draft, self.delay_ms.value() if self.standard_delay.isChecked() else None)
         super().render_events()
         if hasattr(self, "timeline"):
             self.render_timeline()
+
+    def read_draft(self):
+        for row, event in enumerate(self.draft):
+            spin = self.table.cellWidget(row, 3)
+            if spin:
+                event['char_delay_ms' if event['type'] == 'text' else 'delay_ms'] = spin.value()
+        return self.draft
+
+    def apply_steps(self):
+        if self.recording:
+            return
+        self.read_draft()
+        self.render_events()
+
+    def edit_table_text(self, row, column=0):
+        if self.recording or not 0 <= row < len(self.draft) or self.draft[row]['type'] != 'text':
+            return
+        text, accepted = QInputDialog.getMultiLineText(self, 'Editar texto', 'Texto de la acción', self.draft[row]['text'])
+        if accepted and text:
+            if len(text) > 5000 or '\x00' in text:
+                return self.error('El texto debe contener entre 1 y 5000 caracteres, sin caracteres nulos.')
+            self.read_draft()
+            self.draft[row]['text'] = text
+            self.render_events()
+            self.table.selectRow(row)
+
+    def table_text_menu(self, position):
+        item = self.table.itemAt(position)
+        if item is None or self.recording or self.draft[item.row()]['type'] != 'text':
+            return
+        self.table.selectRow(item.row())
+        menu = QMenu(self)
+        edit = menu.addAction('Editar')
+        if menu.exec(self.table.viewport().mapToGlobal(position)) == edit:
+            self.edit_table_text(item.row())
+
+    def update_stats(self, *_):
+        total = 0
+        for row, event in enumerate(self.draft):
+            spin = self.table.cellWidget(row, 3)
+            if spin:
+                total += spin.value() * (max(0, len(event['text'])-1) if event['type'] == 'text' else 1)
+        self.sequence_stats.setText(f'{len(self.draft)} pasos · {total / 1000:.2f} s')
+
+    def highlight_steps(self):
+        rows = {index.row() for index in self.table.selectedIndexes()}
+        if not hasattr(self, 'timeline'):
+            return
+        for i in range(self.timeline.count()):
+            chip = self.timeline.itemAt(i).widget()
+            if isinstance(chip, TimelineBlock):
+                chip.is_selected = chip.row in rows
+                chip.update()
+
+    def delete_timeline_step(self, row):
+        if self.recording:
+            return
+        self.table.selectRow(row)
+        self.remove_step()
+
+    def remove_step(self):
+        if self.recording:
+            return
+        self.read_draft()
+        rows = sorted({index.row() for index in self.table.selectedIndexes()}, reverse=True)
+        for row in rows:
+            del self.draft[row]
+        if any(event['type'] != 'wait' for event in self.draft):
+            while self.draft and self.draft[0]['type'] == 'wait':
+                self.draft.pop(0)
+            while self.draft and self.draft[-1]['type'] == 'wait':
+                self.draft.pop()
+        self.render_events()
 
     def render_timeline(self):
         self.timeline_timer.stop()
         self.timeline_pending = False
         if not hasattr(self, "timeline"):
             return
-        while self.timeline.count():
-            item = self.timeline.takeAt(self.timeline.count() - 1)
+        sequence = self.mode_combo.currentData() == 'sequence'
+        self.sequence_container.setVisible(sequence)
+        self.single_timeline_content.setVisible(not sequence)
+        if sequence:
+            self.timeline, self.timeline_content = self.phase_layouts[self.phase], self.phase_tracks[self.phase]
+            for phase in ('press', 'hold', 'release'):
+                self.phase_headers[phase].setChecked(phase == self.phase)
+                self.render_track(self.phase_layouts[phase], self.draft if phase == self.phase else self.phase_drafts[phase], phase)
+        else:
+            self.timeline, self.timeline_content = self.single_timeline, self.single_timeline_content
+            self.render_track(self.timeline, self.draft)
+        self.highlight_steps()
+
+    def render_track(self, timeline, events, phase=None):
+        while timeline.count():
+            item = timeline.takeAt(timeline.count() - 1)
             if item.widget():
                 item.widget().hide()
                 item.widget().deleteLater()
         standard = self.standard_delay.isChecked() or self.mode_combo.currentData() == "latch"
         tokens = ([(row, "delay" if event["type"] == "wait" else "action", event)
-                   for row, event in enumerate(self.draft)] if standard else timeline_tokens(self.draft))
+                   for row, event in enumerate(events)] if standard else timeline_tokens(events))
         for index, (row, token_kind, event) in enumerate(tokens):
             kind = event["type"]
+            if standard and kind == 'wait':
+                continue
             if (not self.show_releases.isChecked() or self.mode_combo.currentData() == "latch") and kind in ("key", "mouse") and not event["down"]:
                 continue
             if kind == "key":
@@ -1037,15 +1220,18 @@ class StudioWindow(MainWindow):
             chip = TimelineBlock(index, row, text, self.macro_color,
                                  delay=event["delay_ms"] if token_kind == "delay" else None,
                                  down=event.get("down"), draggable=not self.recording)
-            chip.selected.connect(self.select_step)
-            chip.delay_changed.connect(self.edit_timeline_delay)
-            self.timeline.addWidget(chip)
-        plus = button("+", self.action_menu)
+            chip.selected.connect(lambda row, p=phase: self.select_phase_step(p, row))
+            chip.delete_requested.connect(lambda row, p=phase: self.delete_phase_step(p, row))
+            chip.delay_changed.connect(lambda row, value, p=phase: self.edit_phase_delay(p, row, value))
+            timeline.addWidget(chip)
+        plus = button('+', self.action_menu if phase is None else lambda checked=False, p=phase: self.phase_action_menu(p))
         plus.setFixedSize(48, 48)
         plus.setStyleSheet("background:#333; font-size:30px; font-weight:300; padding:0; border-radius:0")
-        self.timeline.addWidget(plus)
-        if not self.draft:
-            self.timeline.addWidget(label("INICIAR AHORA", "muted"))
+        timeline.addWidget(plus)
+        if phase is not None:
+            self.phase_plus[phase] = plus
+        if not events:
+            timeline.addWidget(label("INICIAR AHORA", "muted"))
 
     def edit_timeline_delay(self, row, value):
         if self.recording:
@@ -1059,10 +1245,20 @@ class StudioWindow(MainWindow):
             return
         self.read_draft()
         if self.standard_delay.isChecked() or self.mode_combo.currentData() == "latch":
-            event = self.draft.pop(source)
-            self.draft.insert(destination - (destination > source), event)
+            actions = [event for event in self.draft if event['type'] != 'wait']
+            start = sum(e['type'] != 'wait' for e in self.draft[:source])
+            end = sum(e['type'] != 'wait' for e in self.draft[:destination])
+            event = actions.pop(start)
+            actions.insert(end - (end > start), event)
+            self.draft = actions
         else:
+            if self.draft[source]['type'] == 'wait':
+                destination = max(1, min(destination, len(self.draft)-1))
             self.draft = reorder_tokens(self.draft, source, destination)
+            while self.draft and self.draft[0]['type'] == 'wait':
+                self.draft.pop(0)
+            while self.draft and self.draft[-1]['type'] == 'wait':
+                self.draft.pop()
         self.render_events()
 
     def select_step(self, index):
@@ -1077,7 +1273,13 @@ class StudioWindow(MainWindow):
         color = QColorDialog.getColor(QColor(self.macro_color), self, "Color de la macro")
         if color.isValid():
             self.macro_color = color.name()
+            self.macro_color_custom = True
             self.render_timeline()
+
+    def reset_macro_color(self):
+        self.macro_color = DEFAULT_MACRO_COLOR
+        self.macro_color_custom = False
+        self.render_timeline()
 
     def reset_macro(self):
         if self.current_macro():
@@ -1123,6 +1325,8 @@ class StudioWindow(MainWindow):
             control.clicked.connect(lambda checked=False, value=title: (choice.append(value), popup.accept()))
             layout.addWidget(control, 0, Qt.AlignmentFlag.AlignLeft)
         control = self.sender()
+        if self.mode_combo.currentData() == 'sequence':
+            control = self.phase_plus.get(self.phase, control)
         popup.adjustSize()
         position = control.mapToGlobal(control.rect().bottomLeft()) if isinstance(control, QWidget) else self.mapToGlobal(self.rect().center())
         screen = self.screen().availableGeometry()
@@ -1134,15 +1338,13 @@ class StudioWindow(MainWindow):
         if title.startswith("●"):
             return self.toggle_record()
         if title in ("Tecla / botón / rueda", "Retardo"):
-            dialog = AddActionDialog(self)
-            if title == "Retardo":
-                dialog.kind.setCurrentIndex(2)
+            dialog = DelayDialog(self) if title == 'Retardo' else AddActionDialog(self)
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 self.append_actions(dialog.events())
         elif title == "Texto y emojis":
             text, ok = QInputDialog.getMultiLineText(self, "Texto y emojis", "Texto que escribirá la macro")
             if ok and text:
-                self.append_actions([{"type": "text", "text": text, "delay_ms": 0}])
+                self.append_actions([{"type": "text", "text": text, "delay_ms": 0, 'char_delay_ms': 0}])
         elif title == "Inicio de aplicación":
             path, _ = QFileDialog.getOpenFileName(self, "Seleccionar aplicación", "", "Aplicación Windows (*.exe)")
             if path:
@@ -1159,5 +1361,11 @@ class StudioWindow(MainWindow):
         self.read_draft()
         if len(self.draft) + len(events) > MAX_EVENTS:
             return self.error("La macro supera el límite de pasos.")
-        self.draft.extend(events)
+        if events and all(event['type'] == 'wait' for event in events):
+            if sum(event['type'] != 'wait' for event in self.draft) < 2:
+                return self.error('Añade primero dos acciones para colocar el retardo entre ellas.')
+            position = max(1, min(self.table.currentRow()+1, len(self.draft)-1))
+            self.draft[position:position] = events
+        else:
+            self.draft.extend(events)
         self.render_events()

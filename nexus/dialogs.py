@@ -31,7 +31,7 @@ class AddActionDialog(QDialog):
         self.mode.addItems(["Pulsar y soltar", "Solo pulsar", "Solo soltar"])
         self.delay = QSpinBox()
         self.delay.setRange(0, 60000)
-        self.delay.setValue(100)
+        self.delay.setValue(0)
         self.delay.setSuffix(" ms")
         self.delta = QSpinBox()
         self.delta.setRange(-12000, 12000)
@@ -71,8 +71,29 @@ class AddActionDialog(QDialog):
         else:
             event["button"] = self.mouse.currentData()
         if self.mode.currentIndex() == 0:
-            return [event, {**event, "down": False, "delay_ms": 50}]
+            return [event, {'type': 'wait', 'delay_ms': 50}, {**event, "down": False, "delay_ms": 0}]
         return [event]
+
+
+class DelayDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Acción de retardo')
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+        self.delay = QSpinBox()
+        self.delay.setRange(0, 60000)
+        self.delay.setValue(50)
+        self.delay.setSuffix(' ms')
+        form.addRow('Milisegundos', self.delay)
+        layout.addLayout(form)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def events(self):
+        return [dict(type='wait', delay_ms=self.delay.value())]
 
 
 class BindingDialog(QDialog):

@@ -10,6 +10,12 @@ from .safety import protected_control
 from .keyboard_support import FUNCTION_KEYS, function_key
 
 MAX_EVENTS = 5000
+DEFAULT_MACRO_COLOR = '#9b0037'
+
+
+def macro_label_color(macro):
+    color = macro.get('color', DEFAULT_MACRO_COLOR)
+    return color if macro.get('custom_color', color.lower() != DEFAULT_MACRO_COLOR) else '#ffffff'
 
 
 def new_id() -> str:
@@ -80,6 +86,12 @@ def validate_events(events: list, *, initial_held=None, balanced=True) -> list[d
             if not isinstance(text, str) or not 1 <= len(text) <= 5000 or "\x00" in text:
                 raise ValueError(f"Paso {n}: el texto debe contener entre 1 y 5000 caracteres.")
             clean["text"] = text
+            char_delay = event.get('char_delay_ms', 0)
+            if type(char_delay) is not int or not 0 <= char_delay <= 60000:
+                raise ValueError(f'Paso {n}: retardo entre letras incorrecto.')
+            if 'char_delay_ms' in event:
+                clean['char_delay_ms'] = char_delay
+            total += max(0, len(text)-1) * char_delay
         elif kind == "launch":
             path = event.get("path")
             if not isinstance(path, str) or "\x00" in path or not Path(path).is_absolute() or Path(path).suffix.lower() != ".exe":
@@ -147,13 +159,17 @@ def validate_macro(macro):
     delay = macro.get("standard_delay_ms", 50)
     if type(delay) is not int or not 0 <= delay <= 60000:
         raise ValueError("El retardo estándar debe estar entre 0 y 60000 ms.")
-    color = macro.get("color", "#9b0037")
+    color = macro.get("color", DEFAULT_MACRO_COLOR)
     import re
     if not isinstance(color, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
         raise ValueError("Color de macro incorrecto.")
     clean = {"id": str(macro.get("id") or new_id())[:100], "name": macro["name"].strip()[:100],
              "mode": mode, "repeats": repeats, "standard_delay": bool(macro.get("standard_delay", False)),
              "standard_delay_ms": delay, "color": color}
+    custom_color = macro.get('custom_color', color.lower() != DEFAULT_MACRO_COLOR)
+    if type(custom_color) is not bool:
+        raise ValueError('Personalización del color incorrecta.')
+    clean['custom_color'] = custom_color
     if mode == "sequence":
         sections = macro.get("sections", {})
         if not isinstance(sections, dict):

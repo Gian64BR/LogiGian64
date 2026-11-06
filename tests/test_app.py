@@ -143,17 +143,17 @@ class ApplicationTests(unittest.TestCase):
                             for down in (True, False)]
             window.render_events()
             window.standard_delay.setChecked(True)
-            self.assertEqual([e["delay_ms"] for e in window.draft], [50, 50])
-            self.assertEqual([window.table.cellWidget(i, 3).value() for i in range(2)], [50, 50])
+            self.assertEqual([e["delay_ms"] for e in window.draft], [0, 50, 0])
+            self.assertEqual([window.table.cellWidget(i, 3).value() for i in range(3)], [0, 50, 0])
             window.delay_ms.setValue(75)
-            self.assertEqual([e["delay_ms"] for e in window.draft], [75, 75])
+            self.assertEqual([e["delay_ms"] for e in window.draft], [0, 75, 0])
             window.standard_delay.setChecked(False)
             self.assertTrue(window.table.cellWidget(0, 3).isEnabled())
             window.standard_delay.setChecked(True)
             self.assertFalse(window.table.cellWidget(0, 3).isEnabled())
             window.save_macro()
             self.assertEqual(window.stack.currentIndex(), 1)
-            self.assertEqual([e["delay_ms"] for e in Store(Path(directory)).active["macros"][0]["events"]], [75, 75])
+            self.assertEqual([e["delay_ms"] for e in Store(Path(directory)).active["macros"][0]["events"]], [0, 75, 0])
             window.exit_application()
 
     def test_recorder_accepts_clicks_in_nexus_and_preserves_large_handles(self):

@@ -7,7 +7,8 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal, QRectF, QPointF, QMimeData, QPoint, QSize
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QDrag, QPainterPath, QIcon, QRegion
 from PySide6.QtWidgets import (QWidget, QListWidget, QFrame, QLabel, QVBoxLayout, QHBoxLayout,
-                              QPushButton, QDialog, QDialogButtonBox, QComboBox)
+                              QPushButton, QDialog, QDialogButtonBox, QComboBox,
+                              QStyledItemDelegate, QStyleOptionViewItem, QStyle)
 from .widgets import DeviceArt, label, button, STYLE
 from .core import MODES
 
@@ -181,10 +182,13 @@ class HardwareArt(DeviceArt):
             self.picture = QPixmap(str(path))
             self.bundled_g502 = True
         self.content_rect = QRectF(QRegion(self.picture.mask()).boundingRect()) if not self.picture.isNull() else QRectF()
+        self.rotation_degrees = 90 if self.device.kind == 'mouse' and self.side and self.content_rect.width() > self.content_rect.height() else 0
         self.update()
 
     def source_rect(self):
         from .keyboard_support import is_kumara
+        if self.rotation_degrees and not self.content_rect.isEmpty():
+            return self.content_rect
         if self.bundled_g502 and not self.content_rect.isEmpty():
             return self.content_rect
         if is_kumara(self.device) and not self.picture.isNull():
@@ -198,8 +202,9 @@ class HardwareArt(DeviceArt):
         source = self.source_rect()
         if source.width() <= 0 or source.height() <= 0:
             return QRectF(self.rect())
-        scale = min(self.width() / source.width(), self.height() / source.height())
-        w, h = source.width() * scale, source.height() * scale
+        sw, sh = (source.height(), source.width()) if self.rotation_degrees else (source.width(), source.height())
+        scale = min(self.width() / sw, self.height() / sh)
+        w, h = sw * scale, sh * scale
         return QRectF((self.width() - w) / 2, (self.height() - h) / 2, w, h)
 
     def paintEvent(self, event):
@@ -209,7 +214,13 @@ class HardwareArt(DeviceArt):
             return super().paintEvent(event)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        p.drawPixmap(self.fitted_rect(), self.picture, self.source_rect())
+        fitted = self.fitted_rect()
+        if self.rotation_degrees:
+            p.translate(fitted.center())
+            p.rotate(self.rotation_degrees)
+            p.drawPixmap(QRectF(-fitted.height()/2, -fitted.width()/2, fitted.height(), fitted.width()), self.picture, self.source_rect())
+        else:
+            p.drawPixmap(fitted, self.picture, self.source_rect())
         p.end()
 
     def paint_generic_mouse(self):
@@ -322,26 +333,36 @@ class MacroModeButton(QPushButton):
         p.setPen(QPen(color, 1.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
         p.setBrush(Qt.BrushStyle.NoBrush)
         if self.mode == 'once':
-            p.drawLine(-11, 0, 10, 0)
-            p.drawLine(4, -6, 10, 0)
-            p.drawLine(10, 0, 4, 6)
+            path = QPainterPath(QPointF(-5, -8))
+            path.lineTo(8, 0)
+            path.lineTo(-5, 8)
+            path.closeSubpath()
+            p.setBrush(color)
+            p.drawPath(path)
         elif self.mode == 'hold':
-            p.drawArc(QRectF(-8, -10, 17, 19), -65*16, 300*16)
-            p.drawLine(4, 9, -1, 7)
-            p.drawLine(4, 9, 3, 13)
+            p.drawLine(-9, -4, 9, -4)
+            p.drawLine(5, -8, 9, -4)
+            p.drawLine(9, -4, 5, 0)
+            p.drawLine(9, 4, -9, 4)
+            p.drawLine(-5, 0, -9, 4)
+            p.drawLine(-9, 4, -5, 8)
         elif self.mode == 'toggle':
             p.drawRoundedRect(QRectF(-12, -7, 24, 14), 7, 7)
             p.setBrush(color)
             p.drawEllipse(QPointF(5, 0), 5, 5)
         elif self.mode == 'sequence':
-            for x, y in ((-1, -3), (-6, -5), (-11, -7)):
-                p.setBrush(color if x == -11 else QColor('#191919'))
-                p.drawRoundedRect(QRectF(x, y, 13, 13), 2, 2)
+            p.drawLine(-8, 0, 8, 0)
+            for x in (-12, -3, 6):
+                p.setBrush(QColor('#00232a' if selected else '#191919'))
+                p.drawRoundedRect(QRectF(x, -5, 6, 10), 1.5, 1.5)
         else:
-            p.drawRoundedRect(QRectF(-11, -9, 22, 18), 3, 3)
-            p.setPen(QPen(color, 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-            p.drawLine(-4, -4, -4, 4)
-            p.drawLine(4, -4, 4, 4)
+            path = QPainterPath(QPointF(-5, -1))
+            path.lineTo(-5, -5)
+            path.cubicTo(-5, -12, 5, -12, 5, -5)
+            path.lineTo(5, -1)
+            p.drawPath(path)
+            p.drawRoundedRect(QRectF(-8, -1, 16, 12), 2, 2)
+            p.drawLine(0, 3, 0, 7)
         if self.hasFocus():
             p.setPen(QPen(color, 1, Qt.PenStyle.DotLine))
             p.setBrush(Qt.BrushStyle.NoBrush)
@@ -429,7 +450,28 @@ class HubCard(QFrame):
         self.selected.emit(self.device)
 
 
+class MacroColorDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        option = QStyleOptionViewItem(option)
+        self.initStyleOption(option, index)
+        text, option.text = option.text, ''
+        style = option.widget.style()
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, option, painter, option.widget)
+        rect = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText, option, option.widget)
+        brush = index.data(Qt.ItemDataRole.ForegroundRole)
+        painter.save()
+        painter.setFont(option.font)
+        painter.setPen(brush.color() if brush else QColor('white'))
+        painter.drawText(rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                         option.fontMetrics.elidedText(text, Qt.TextElideMode.ElideRight, rect.width()))
+        painter.restore()
+
+
 class MacroLibrary(QListWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setItemDelegate(MacroColorDelegate(self))
+
     def startDrag(self, supported_actions):
         item = self.currentItem()
         if not item:
@@ -453,6 +495,7 @@ class AssignmentCanvas(QWidget):
         self.device = None
         self.side = False
         self.names = {}
+        self.name_colors = {}
         self.disabled = set()
         self.paused = set()
         self.label_rects = {}
@@ -498,21 +541,20 @@ class AssignmentCanvas(QWidget):
         else:
             height = min(410, h * .72)
             knup = (self.device.vid, self.device.pid) == ("30FA", "0400")
-            if (knup or self.art.bundled_g502) and not self.art.picture.isNull():
+            if not self.art.picture.isNull():
                 source = self.art.source_rect()
-                ratio = source.width() / source.height()
-                if self.side:
-                    width = min(490, w * .48)
-                    height = width / ratio
-                else:
-                    width = height * ratio
+                ratio = source.height() / source.width() if self.art.rotation_degrees else source.width() / source.height()
+                width = height * ratio
             else:
                 width = height * (936 / 2700 if self.side else 1391 / 2700)
                 if not self.art.picture.isNull() and (self.device.vid, self.device.pid) != ('046D', 'C08B'):
                     source = self.art.source_rect()
                     width = height * source.width() / source.height()
-            x, y = w * .56 - width / 2, (h - height) / 2 - 10
+            x, y = (w - width) / 2, (h - height) / 2 - 10
             self.art.setGeometry(int(x), int(y), int(width), int(height))
+            # Minimum widget sizes can enlarge a narrow side view. Center the
+            # actual geometry, keeping its existing vertical position intact.
+            self.art.move((w-self.art.width())//2, self.art.y())
             if self.side:
                 # Anchors measured against the original G HUB reference captures.
                 coords = {"G4": (.612, .661), "G5": (.526, .509), "G6": (.274, .451)}
@@ -542,6 +584,13 @@ class AssignmentCanvas(QWidget):
                            'G10': (690, 313), 'G11': (582, 313)})
                 coords = {slot: ((px - source.x()) / source.width(), (py - source.y()) / source.height())
                           for slot, (px, py) in pixels.items()}
+            if self.art.rotation_degrees:
+                if not self.art.bundled_g502:
+                    source = self.art.source_rect()
+                    coords = {slot: ((px*self.art.picture.width()-source.x())/source.width(),
+                                     (py*self.art.picture.height()-source.y())/source.height())
+                              for slot, (px, py) in coords.items()}
+                coords = {slot: (1-py, px) for slot, (px, py) in coords.items()}
             # Use the actual integer widget rectangle used to paint the image.
             rect = self.art.geometry()
             self.points = {slot: QPointF(rect.x() + px * rect.width(), rect.y() + py * rect.height())
@@ -691,7 +740,7 @@ class TargetsOverlay(QWidget):
             p.setPen(QPen(QColor("#00b7ed" if active else "#aaaaad"), 1.5))
             p.setBrush(QColor("#00b7ed" if active else "#222326" if slot in ("G4", "G5", "G6", "G7", "G8") or text == "Sin asignar" else "#f4f4f5"))
             p.drawEllipse(pos, 5, 5)
-            p.setPen(QColor("#00c6ed" if active else "#f0f0f2"))
+            p.setPen(QColor(self.canvas.name_colors.get(slot, "#00c6ed" if active else "#f0f0f2")))
             text = p.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, int(rect.width())) if "\n" not in text else text
             p.drawText(rect, alignment | Qt.AlignmentFlag.AlignBottom, text)
         p.end()

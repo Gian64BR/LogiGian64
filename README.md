@@ -1,4 +1,4 @@
-# LogiGian64 0.2.14 — Macros y asignaciones
+# LogiGian64 0.2.18 — Macros y asignaciones
 
 Aplicación independiente para Windows 10/11 x64, con un espacio de trabajo negro,
 panel lateral y asignación de macros sobre la imagen del periférico.
@@ -299,3 +299,15 @@ El G502 HERO activa su control directo al iniciar la aplicación y al conectar e
 - Salir desde la bandeja termina la aplicación tanto con la ventana abierta como oculta. Una restauración USB fallida ya no bloquea indefinidamente el cierre; se conserva un diagnóstico local sin afirmar que la restauración se confirmó.
 
 111 pruebas automatizadas aprobadas, incluidas pruebas de cierre en procesos separados.
+
+## Editor de macros 0.2.15 (prueba local)
+
+Retardos separados entre acciones y tabla Pulsar / Retardo / Soltar; selección resaltada y borrado con Suprimir en la línea de tiempo o la tabla. Aplicar actualiza la vista desde la tabla. El menú + conserva las acciones y el diálogo Acción de retardo pide solo milisegundos. El tiempo de una acción de texto controla la pausa entre letras. Se retiran los botones duplicados Añadir, Prueba única y Detener del editor; Guardar, Restablecer y la parada de emergencia siguen disponibles.
+
+## Prueba local 0.2.16
+
+Edición de acciones de texto con doble clic o clic derecho → Editar, conservando su retardo. Las macros nuevas empiezan en rojo; su color individual aparece en sus nombres. Las vistas laterales de los mouse se muestran verticales con sus objetivos ajustados.
+
+## Prueba local 0.2.18
+
+Nombres de macros blancos por defecto, con color externo solo cuando se personaliza dentro de esa macro. Mouse centrado sobre el texto y los botones Vista 1 / Vista 2, conservando la separación vertical.

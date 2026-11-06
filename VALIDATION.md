@@ -1,3 +1,43 @@
+# Verificación local de LogiGian64 0.2.18
+
+- 129 pruebas automatizadas aprobadas.
+- Las tres fases visibles, sus botones de añadir, grabación, borrado independiente y persistencia comprobados.
+- Restablecimiento del color interno y de los nombres externos comprobado.
+- Interfaz revisada mediante captura. Compilación local, sin publicación en GitHub.
+
+## Historial anterior
+
+# Verificación local de LogiGian64 0.2.17
+
+- 126 pruebas automatizadas aprobadas.
+- Blanco predeterminado, personalización explícita incluso con el rojo predeterminado y conservación de colores existentes comprobados.
+- Centrado horizontal y conservación de altura comprobados en ambas vistas de G502 y KNUP a distintos tamaños de ventana.
+- Capturas revisadas visualmente. Compilación local; sin publicación en GitHub.
+
+## Historial anterior
+
+# Verificación local de LogiGian64 0.2.16
+
+- 124 pruebas automatizadas aprobadas.
+- Edición del texto por doble clic y menú contextual, cancelación de edición y conservación del retardo comprobadas.
+- Color predeterminado y persistencia de colores independientes comprobados.
+- Vistas laterales verticales y objetivos dentro de la imagen comprobados para G502 HERO y KNUP KP-V84, con capturas revisadas.
+- Compilación local; no se publica ni instala automáticamente.
+
+## Historial anterior
+
+# Verificación local de LogiGian64 0.2.15
+
+Fecha local: 5 de noviembre de 2026. Windows x64.
+
+- 121 pruebas automatizadas aprobadas.
+- Selección y Suprimir en bloques y celdas numéricas, Aplicar, filas de retardo separadas y controles simplificados comprobados.
+- Texto con 10 ms entre letras comprobado con emisor simulado, sin una pausa inicial; soltar el activador interrumpe esperas largas.
+- La pausa estándar no se suma dos veces a los retardos separados.
+- Instalador preparado localmente para revisión del usuario. No se publica esta compilación en GitHub.
+
+## Historial anterior
+
 # Verificación de LogiGian64 0.2.14
 
 Fecha local: 4 de noviembre de 2026. Windows x64.

@@ -17,6 +17,46 @@ def keyboard(identity='unit-a'):
 
 
 class DeviceDetectionTests(unittest.TestCase):
+    def test_both_mouse_views_share_horizontal_center_without_vertical_shift(self):
+        from nexus.studio_widgets import AssignmentCanvas
+        app = QApplication.instance() or QApplication([])
+        canvas = AssignmentCanvas()
+        try:
+            for width in (800,1500):
+                canvas.resize(width,600)
+                for vid,pid in [('046D','C08B'),('30FA','0400')]:
+                    device = win.Device(vid+pid,'Mouse','mouse','Mouse',vid,pid,[],[],button_count=5)
+                    for side in (False,True):
+                        with self.subTest(width=width,vid=vid,pid=pid,side=side):
+                            with patch.object(Path,'glob',return_value=[]):
+                                canvas.configure(device)
+                                canvas.side = side
+                                canvas.configure(device)
+                            self.assertLessEqual(abs(canvas.art.geometry().center().x()-width/2),1)
+                            self.assertEqual(canvas.art.y(),int((600-min(410,600*.72))/2-10))
+                            self.assertGreater(canvas.art.height(),canvas.art.width())
+        finally:
+            canvas.deleteLater()
+
+    def test_mouse_side_views_stay_upright_with_targets_inside_artwork(self):
+        from nexus.studio_widgets import AssignmentCanvas
+        app = QApplication.instance() or QApplication([])
+        canvas = AssignmentCanvas()
+        canvas.resize(800,600)
+        try:
+            for vid,pid in [('046D','C08B'),('30FA','0400')]:
+                with self.subTest(vid=vid,pid=pid):
+                    device = win.Device(vid+pid,'Mouse','mouse','Mouse',vid,pid,[],[],button_count=5)
+                    with patch.object(Path,'glob',return_value=[]):
+                        canvas.configure(device)
+                        canvas.side = True
+                        canvas.configure(device)
+                    self.assertGreater(canvas.art.height(),canvas.art.width())
+                    for point in canvas.points.values():
+                        self.assertTrue(canvas.art.geometry().contains(point.toPoint()))
+        finally:
+            canvas.deleteLater()
+
     def test_g502_unreadable_external_picture_uses_bundled_image(self):
         from nexus.studio_widgets import HardwareArt
         app = QApplication.instance() or QApplication([])
@@ -71,7 +111,8 @@ class DeviceDetectionTests(unittest.TestCase):
                 self.assertEqual(set(canvas.points), {'G1','G2','G3','G7','G8','G9','G10','G11'})
                 canvas.side = True
                 canvas.configure(device)
-                self.assertGreater(canvas.art.width(), canvas.art.height())
+                self.assertGreater(canvas.art.height(), canvas.art.width())
+                self.assertEqual(canvas.art.rotation_degrees, 90)
                 self.assertEqual(set(canvas.points), {'G4','G5','G6'})
                 for point in canvas.points.values():
                     self.assertTrue(canvas.art.geometry().contains(point.toPoint()))

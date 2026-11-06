@@ -9,13 +9,37 @@ from PySide6.QtWidgets import QWidget, QApplication, QInputDialog, QLayout
 MIME = "application/x-logigian-timeline"
 
 
+def editor_events(events, standard=None, trim_leading=False):
+    """Represent timing as separate rows; never invent a leading/trailing gap."""
+    result = []
+    for event in events:
+        event = copy.deepcopy(event)
+        if event['type'] == 'wait':
+            if standard is not None:
+                event['delay_ms'] = standard
+            result.append(event)
+            continue
+        delay = event.get('delay_ms', 0)
+        if result and result[-1]['type'] != 'wait':
+            delay = standard if standard is not None else delay
+            if delay:
+                result.append(dict(type='wait', delay_ms=delay))
+        elif result and delay and standard is None:
+            result.append(dict(type='wait', delay_ms=delay))
+        event['delay_ms'] = delay if not result and standard is None and not trim_leading else 0
+        if event['type'] == 'text' and standard is not None:
+            event['char_delay_ms'] = standard
+        result.append(event)
+    return result
+
+
 def timeline_tokens(events):
     tokens = []
     for row, event in enumerate(events):
         if event['type'] == 'wait':
             tokens.append((row, 'delay', copy.deepcopy(event)))
         else:
-            if event.get('delay_ms', 0):
+            if row and event.get('delay_ms', 0):
                 tokens.append((row, 'delay', {'type': 'wait', 'delay_ms': event['delay_ms']}))
             action = copy.deepcopy(event)
             action['delay_ms'] = 0
@@ -93,12 +117,15 @@ class FlowLayout(QLayout):
 class TimelineBlock(QWidget):
     selected = Signal(int)
     delay_changed = Signal(int, int)
+    delete_requested = Signal(int)
 
     def __init__(self, index, row, text, color, delay=None, down=None, draggable=True):
         super().__init__()
         self.index, self.row, self.text, self.color = index, row, text, color
         self.delay, self.down, self.draggable = delay, down, draggable
         self.origin = None
+        self.is_selected = False
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setFixedSize(66 if delay is not None else max(48, self.fontMetrics().horizontalAdvance(text) + 26), 72)
         self.setCursor(Qt.CursorShape.OpenHandCursor if draggable else Qt.CursorShape.PointingHandCursor)
         self.setToolTip('Arrastra para mover. Doble clic para editar los milisegundos.' if delay is not None else 'Arrastra para mover. Clic para seleccionar el paso.')
@@ -106,6 +133,10 @@ class TimelineBlock(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if self.is_selected:
+            p.setPen(QPen(QColor('#00c7f1'), 2))
+            p.setBrush(QColor(0, 199, 241, 45))
+            p.drawRoundedRect(QRectF(1, 1, self.width()-2, self.height()-2), 5, 5)
         p.setPen(QColor('white'))
         font = p.font(); font.setBold(True); p.setFont(font)
         if self.delay is not None:
@@ -115,7 +146,7 @@ class TimelineBlock(QWidget):
             font.setBold(False); font.setPointSize(9); p.setFont(font)
             p.drawText(QRectF(0, 40, self.width(), 22), Qt.AlignmentFlag.AlignCenter, 'ms')
         else:
-            p.setPen(Qt.PenStyle.NoPen); p.setBrush(QColor(self.color))
+            p.setPen(Qt.PenStyle.NoPen); p.setBrush(QColor(self.color).lighter(150) if self.is_selected else QColor(self.color))
             p.drawRoundedRect(QRectF(0, 18, self.width(), 36), 4, 4)
             p.setPen(QColor('white'))
             p.drawText(QRectF(5, 18, self.width() - 10, 36), Qt.AlignmentFlag.AlignCenter, self.text)
@@ -128,7 +159,15 @@ class TimelineBlock(QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
+            self.setFocus()
             self.origin = event.position().toPoint()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Delete:
+            self.delete_requested.emit(self.row)
+            event.accept()
+        else:
+            super().keyPressEvent(event)
 
     def mouseMoveEvent(self, event):
         if self.draggable and self.origin is not None and (event.position().toPoint() - self.origin).manhattanLength() >= QApplication.startDragDistance():

@@ -59,7 +59,8 @@ class TimelineTests(unittest.TestCase):
             window.reorder_timeline(1,3)
             window.save_macro()
             events=Store(Path(directory)).active['macros'][0]['events']
-            self.assertEqual(events[-1],{'type':'wait','delay_ms':120})
+            self.assertEqual(events[1],{'type':'wait','delay_ms':120})
+            self.assertEqual(events[-1]['type'], 'key')
             self.assertEqual([e['down'] for e in events if e['type']=='key'],[True,False])
             window.exit_application()
 

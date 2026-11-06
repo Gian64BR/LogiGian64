@@ -32,6 +32,7 @@ class Events(QObject):
     plugin_error = Signal(str)
     auto_plugin_error = Signal(str)
     hardware = Signal(object)
+    shutdown = Signal()
 
 
 class NativeInput(QAbstractNativeEventFilter):
@@ -39,10 +40,14 @@ class NativeInput(QAbstractNativeEventFilter):
         super().__init__()
         self.events = events
         self.last_error = ""
+        self.shutdown_message = C.windll.user32.RegisterWindowMessageW('LogiGian64.Installer.Shutdown.v1')
 
     def nativeEventFilter(self, event_type, message):
         try:
             msg = W.MSG.from_address(int(message))
+            if self.shutdown_message and msg.message == self.shutdown_message:
+                self.events.shutdown.emit()
+                return True, 0
             if msg.message == 0xFF:
                 data = win.read_input(msg.lParam)
                 if data:
@@ -79,6 +84,7 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(app_icon())
         self.store = store or Store()
         self.events = Events()
+        self.events.shutdown.connect(self.installer_shutdown, Qt.ConnectionType.QueuedConnection)
         self.player = MacroEngine(win.send_event, self.events.finished.emit)
         self.events.finished.connect(self.playback_finished)
         self.events.error.connect(self.status)
@@ -463,10 +469,21 @@ class MainWindow(QMainWindow):
         finally:
             self._exit_requested = False
 
+    def installer_shutdown(self):
+        if self._closing:
+            return
+        # Installation cannot wait on an editor dialog. Preserve valid edits;
+        # an invalid draft must not prevent releasing input and hardware.
+        self._installer_shutdown = True
+        self.exit_application()
+
     def status(self, text):
         self.statusBar().showMessage(text)
 
     def error(self, text):
+        if getattr(self, '_installer_shutdown', False):
+            logging.warning('Cierre del instalador: %s', text)
+            return
         QMessageBox.warning(self, "LogiGian64", str(text))
 
     def persist(self):
@@ -1371,7 +1388,7 @@ class MainWindow(QMainWindow):
             event.ignore()
             self.to_tray()
             return
-        if not self.leave_editor():
+        if not self.leave_editor() and not getattr(self, '_installer_shutdown', False):
             result = QMessageBox.question(self, "Cambios sin guardar", "La secuencia no es válida. ¿Salir descartando los cambios sin guardar?")
             if result != QMessageBox.StandardButton.Yes:
                 event.ignore()

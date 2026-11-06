@@ -17,6 +17,51 @@ def keyboard(identity='unit-a'):
 
 
 class DeviceDetectionTests(unittest.TestCase):
+    def test_assignment_sidebar_preserves_readable_lists_and_scrolls_on_laptops(self):
+        app = QApplication.instance() or QApplication([])
+        from PySide6.QtGui import QFontDatabase, QFont
+        original_font = app.font()
+        for filename in ('segoeui.ttf', 'segoeuib.ttf', 'seguisym.ttf'):
+            QFontDatabase.addApplicationFont(str(Path(os.environ.get('WINDIR', 'C:/Windows')) / 'Fonts' / filename))
+        app.setFont(QFont('Segoe UI', 10))
+        self.addCleanup(app.setFont, original_font)
+        with tempfile.TemporaryDirectory() as directory:
+            window = StudioWindow(Store(Path(directory)))
+            try:
+                device = win.Device('responsive', 'KNUP KP-V84', 'mouse', 'KNUP', '30FA', '0400', [], [], button_count=5)
+                window.open_device(device)
+                window.show()
+                for width, height in [(1280, 660), (1093, 610), (1000, 580), (1920, 1020)]:
+                    with self.subTest(width=width, height=height):
+                        window.resize(width, height)
+                        app.processEvents()
+                        app.processEvents()
+                        self.assertEqual(window.size().width(), width)
+                        self.assertEqual(window.size().height(), height)
+                        self.assertGreaterEqual(window.assign_library.height(), 132)
+                        self.assertGreaterEqual(window.binding_list.height(), 104)
+                        scroll = window.assignment_sidebar
+                        self.assertEqual(scroll.horizontalScrollBar().maximum(), 0)
+                        self.assertGreaterEqual(window.binding_list.y() - window.assign_library.geometry().bottom() - 1, 5)
+                        self.assertTrue(window.device_notice.isHidden())
+                        self.assertTrue(window.binding_hint.isHidden())
+                        if height == 580:
+                            self.assertGreater(scroll.verticalScrollBar().maximum(), 0)
+                        scroll.ensureWidgetVisible(window.remove_binding_button)
+                        app.processEvents()
+                        button_bottom = window.remove_binding_button.mapTo(scroll.viewport(), window.remove_binding_button.rect().bottomLeft()).y()
+                        self.assertLessEqual(button_bottom, scroll.viewport().height())
+                        if height == 1020:
+                            self.assertEqual(scroll.verticalScrollBar().maximum(), 0)
+                        scroll.verticalScrollBar().setValue(0)
+                window.tabs.setCurrentIndex(3)
+                self.assertTrue(window.assignment_sidebar.isHidden())
+                window.tabs.setCurrentIndex(0)
+                self.assertFalse(window.assignment_sidebar.isHidden())
+            finally:
+                window.macro_id = None
+                window.exit_application()
+
     def test_both_mouse_views_share_horizontal_center_without_vertical_shift(self):
         from nexus.studio_widgets import AssignmentCanvas
         app = QApplication.instance() or QApplication([])

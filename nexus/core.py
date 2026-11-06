@@ -14,8 +14,12 @@ DEFAULT_MACRO_COLOR = '#9b0037'
 
 
 def macro_label_color(macro):
+    return '#ffffff'
+
+
+def macro_badge_color(macro):
     color = macro.get('color', DEFAULT_MACRO_COLOR)
-    return color if macro.get('custom_color', color.lower() != DEFAULT_MACRO_COLOR) else '#ffffff'
+    return color if macro.get('custom_color', color.lower() != DEFAULT_MACRO_COLOR) else '#999999'
 
 
 def new_id() -> str:

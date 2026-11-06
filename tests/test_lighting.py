@@ -132,10 +132,36 @@ class LightingPanelTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
+    def test_bundled_preview_colors_both_led_groups_without_painting_outside_mouse(self):
+        from nexus.lighting import LightingPreview
+        device = Device('preview', 'G502', 'mouse', 'Logitech', '046D', 'C08B', [], [])
+        with patch.object(Path, 'glob', return_value=[]):
+            preview = LightingPreview(device)
+        preview.resize(400, 600)
+        preview.settings = {0:dict(effect=1,color='#ff0000',period=5000,brightness=100),
+                            1:dict(effect=1,color='#00ff00',period=5000,brightness=100)}
+        image = preview.grab().toImage()
+        fitted, source = preview.fitted_rect(), preview.source_rect()
+        scale = fitted.width()/source.width()
+        for zone, (bounds, mask) in preview.led_masks.items():
+            x, y, width, height = bounds
+            alpha, xx, yy = max((mask.toImage().pixelColor(a,b).alpha(),a,b)
+                               for a in range(width) for b in range(height))
+            self.assertGreater(alpha, 100)
+            color = image.pixelColor(round(fitted.x()+(x+xx-source.x())*scale),
+                                     round(fitted.y()+(y+yy-source.y())*scale))
+            if zone == 0:
+                self.assertGreater(color.red(), color.green()+50)
+            else:
+                self.assertGreater(color.green(), color.red()+50)
+        preview.animation.stop()
+        preview.deleteLater()
+
     def test_zone_edit_sync_persistence_and_sensor_confirmation(self):
         with tempfile.TemporaryDirectory() as directory:
             window = StudioWindow(Store(Path(directory)))
             self.addCleanup(window.exit_application)
+            window.activate_g502 = Mock()  # UI edits must never take the real mouse in unit tests.
             device = Device('123456789abcdef', 'G502', 'mouse', 'Logitech', '046D', 'C08B', [], [])
             window.open_device(device)
             window.tabs.setCurrentIndex(2)
@@ -164,6 +190,46 @@ class LightingPanelTests(unittest.TestCase):
             panel.hardware_changed({'kind':'lighting_restore', 'device_id':device.id})
             self.assertFalse(panel.active)
             window.g502 = None
+
+    def test_edits_during_confirmation_are_sent_and_late_ack_does_not_reenable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            window = StudioWindow(Store(Path(directory)))
+            self.addCleanup(window.exit_application)
+            window.activate_g502 = Mock()
+            device = Device('lighting-race', 'G502', 'mouse', 'Logitech', '046D', 'C08B', [], [])
+            window.open_device(device)
+            panel = window.lighting_panel
+            control = LightingControl(FakeLighting().request, 2)
+            session = SimpleNamespace(ready=True, device=device, lighting=control,
+                set_lighting=Mock(), restore_lighting=Mock(), close=lambda:True)
+            window.g502 = session
+            panel.hardware_changed(dict(kind='ready', device_id=device.id, lighting=control.load()))
+            panel.set_color('#123456')
+            self.assertTrue(panel.control.isChecked())
+            self.assertEqual(session.set_lighting.call_count, 1)
+            panel.set_color('#654321')
+            panel.apply_changes()
+            self.assertEqual(session.set_lighting.call_count, 1)
+            panel.hardware_changed(dict(kind='lighting', device_id=device.id))
+            panel.apply_changes()
+            self.assertEqual(session.set_lighting.call_count, 2)
+            self.assertEqual(session.set_lighting.call_args.args[0][0]['color'], '#654321')
+            panel.control.setChecked(False)
+            panel.hardware_changed(dict(kind='lighting', device_id=device.id))
+            self.assertFalse(panel.active)
+            self.assertFalse(panel.control.isChecked())
+            window.g502 = None
+
+    def test_selecting_color_from_cycle_selects_fixed_color(self):
+        with tempfile.TemporaryDirectory() as directory:
+            window = StudioWindow(Store(Path(directory)))
+            self.addCleanup(window.exit_application)
+            panel = window.lighting_panel
+            window.open_device(Device('generic-rgb', 'Mouse', 'mouse', 'Generic', '', '', [], []))
+            panel.effect.setCurrentIndex(panel.effect.findData(3))
+            panel.set_color('#123abc')
+            self.assertEqual(panel.configs[panel.zone()]['effect'], 1)
+            self.assertEqual(panel.configs[panel.zone()]['color'], '#123abc')
 
     def test_generic_device_keeps_preview_without_claiming_hardware_control(self):
         with tempfile.TemporaryDirectory() as directory:

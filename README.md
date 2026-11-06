@@ -1,4 +1,4 @@
-# LogiGian64 0.2.18 — Macros y asignaciones
+# LogiGian64 0.2.22 — Macros y asignaciones
 
 Aplicación independiente para Windows 10/11 x64, con un espacio de trabajo negro,
 panel lateral y asignación de macros sobre la imagen del periférico.
@@ -308,6 +308,6 @@ Retardos separados entre acciones y tabla Pulsar / Retardo / Soltar; selección 
 
 Edición de acciones de texto con doble clic o clic derecho → Editar, conservando su retardo. Las macros nuevas empiezan en rojo; su color individual aparece en sus nombres. Las vistas laterales de los mouse se muestran verticales con sus objetivos ajustados.
 
-## Prueba local 0.2.18
+## Prueba local 0.2.22
 
 Nombres de macros blancos por defecto, con color externo solo cuando se personaliza dentro de esa macro. Mouse centrado sobre el texto y los botones Vista 1 / Vista 2, conservando la separación vertical.

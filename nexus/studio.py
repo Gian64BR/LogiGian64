@@ -9,12 +9,12 @@ from PySide6.QtGui import QColor, QCursor
 from PySide6.QtWidgets import (QWidget, QFrame, QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget,
     QScrollArea, QComboBox, QCheckBox, QLineEdit, QSpinBox, QTableWidget, QAbstractItemView,
     QHeaderView, QListWidget, QInputDialog, QDialog, QMessageBox, QColorDialog, QSlider,
-    QFileDialog, QMenu, QPushButton, QApplication, QListWidgetItem)
+    QFileDialog, QMenu, QPushButton, QApplication, QListWidgetItem, QSizePolicy, QLayout)
 
 from .app import MainWindow, panel
-from .core import MODES, MAX_EVENTS, new_id, validate_macro, DEFAULT_MACRO_COLOR, macro_label_color
+from .core import MODES, MAX_EVENTS, new_id, validate_macro, DEFAULT_MACRO_COLOR, macro_label_color, macro_badge_color
 from .widgets import label, button
-from .studio_widgets import HubCard, MacroLibrary, AssignmentCanvas, TypeDialog, LearnBindingDialog, RailButton, BackArrow, MacroModeButton
+from .studio_widgets import HubCard, MacroLibrary, MacroSearch, AssignmentPanel, AssignmentCanvas, TypeDialog, LearnBindingDialog, RailButton, BackArrow, MacroModeButton
 from .timeline import TimelineBlock, TimelineTrack, FlowLayout, timeline_tokens, reorder_tokens, editor_events
 from .dialogs import AddActionDialog, DelayDialog
 from . import windows as win
@@ -48,6 +48,9 @@ class StudioWindow(MainWindow):
         super().__init__(store)
         from . import __version__
         self.setWindowTitle(f"LogiGian64 {__version__} — Macros y asignaciones")
+        self.setMinimumSize(1000, 580)
+        available = self.screen().availableGeometry()
+        self.resize(min(1300, available.width()), min(900, available.height()))
 
     def eventFilter(self, watched, event):
         if not self.recording and event.type() == QEvent.Type.FocusIn and isinstance(watched, QWidget):
@@ -111,6 +114,7 @@ class StudioWindow(MainWindow):
         row.addWidget(self.armed)
         outer.addWidget(header)
         self.stack = QStackedWidget()
+        self.stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         outer.addWidget(self.stack, 1)
         footer = QHBoxLayout()
         footer.setContentsMargins(14, 0, 14, 6)
@@ -288,47 +292,66 @@ class StudioWindow(MainWindow):
             rail.addWidget(nav)
         rail.addStretch()
         body.addLayout(rail)
-        sidebar = QFrame()
-        self.assignment_sidebar = sidebar
+        sidebar = AssignmentPanel()
         sidebar.setObjectName("assignmentPanel")
-        sidebar.setFixedWidth(285)
+        self.assignment_content = sidebar
+        self.assignment_sidebar = QScrollArea()
+        self.assignment_sidebar.setObjectName("assignmentScroll")
+        self.assignment_sidebar.setFrameShape(QFrame.Shape.NoFrame)
+        self.assignment_sidebar.setWidgetResizable(True)
+        self.assignment_sidebar.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.assignment_sidebar.setFixedWidth(300)
+        self.assignment_sidebar.setWidget(sidebar)
         left = QVBoxLayout(sidebar)
+        left.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         left.setContentsMargins(16, 22, 16, 18)
+        left.setSpacing(8)
         left.addWidget(label("Asignaciones", "sectionTitle"))
-        left.addSpacing(16)
-        left.addWidget(label("MACROS    /    TECLAS", "eyebrow"))
-        left.addWidget(label("Arrastra una macro a un objetivo para asignarla a este dispositivo.", "muted", True))
-        self.search_macros = QLineEdit()
+        left.addSpacing(12)
+        left.addWidget(label('MACROS', 'macroSection'), 0, Qt.AlignmentFlag.AlignLeft)
+        left.addSpacing(6)
+        left.addWidget(label('Arrastra un macro a un objetivo para asignarlo a este dispositivo.', 'macroInstructions', True))
+        self.search_macros = MacroSearch()
         self.search_macros.setPlaceholderText("Buscar una macro")
         self.search_macros.textChanged.connect(self.filter_library)
         left.addWidget(self.search_macros)
         left.addWidget(button("CREAR NUEVA MACRO", self.new_macro))
         self.assign_library = MacroLibrary()
+        self.assign_library.setObjectName('macroLibrary')
+        self.assign_library.setMinimumHeight(132)
+        self.assign_library.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         self.assign_library.setDragEnabled(True)
         self.assign_library.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.assign_library.customContextMenuRequested.connect(self.library_context_menu)
         self.assign_library.itemDoubleClicked.connect(self.edit_library_macro)
         left.addWidget(self.assign_library, 1)
+        left.addSpacing(6)
         self.binding_list = QListWidget()
-        self.binding_list.setMaximumHeight(125)
+        self.binding_list.setObjectName('assignedButtons')
+        self.binding_list.setMinimumHeight(104)
+        self.binding_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
+        self.binding_list.setMaximumHeight(156)
         self.binding_list.currentRowChanged.connect(self.binding_row_selected)
-        left.addWidget(self.binding_list)
+        left.addWidget(self.binding_list, 1)
         self.keyboard_macro_button = button('DESACTIVAR MACRO', self.toggle_selected_keyboard_macro)
         self.keyboard_macro_button.hide()
         self.keyboard_macro_button.setEnabled(False)
         left.addWidget(self.keyboard_macro_button)
-        left.addWidget(button("QUITAR ASIGNACIÓN", self.remove_binding))
+        self.remove_binding_button = button("QUITAR ASIGNACIÓN", self.remove_binding)
+        left.addWidget(self.remove_binding_button)
         self.binding_hint = label("", "muted", True)
-        left.addWidget(self.binding_hint)
+        self.binding_hint.hide()
         self.direct_button = button("ACTIVAR BOTONES G", self.activate_g502, True)
         left.addWidget(self.direct_button)
         self.device_notice = label("", "muted", True)
-        left.addWidget(self.device_notice)
-        body.addWidget(sidebar)
+        self.device_notice.hide()
+        body.addWidget(self.assignment_sidebar)
         self.device_panels = QStackedWidget()
+        self.device_panels.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         assignments = QWidget()
         av = QVBoxLayout(assignments)
         self.canvas = AssignmentCanvas()
+        self.canvas.setMinimumSize(440, 280)
         self.canvas.target.connect(self.assign_target)
         self.canvas.target_context.connect(self.assign_target)
         self.canvas.selection_changed.connect(self.keyboard_target_selected)
@@ -615,6 +638,9 @@ class StudioWindow(MainWindow):
             self.assign_library.addItem(macro["name"] + ("    " + ", ".join(filter(None, slots)) if slots else ""))
             item = self.assign_library.item(self.assign_library.count() - 1)
             item.setData(Qt.ItemDataRole.UserRole, macro["id"])
+            item.setData(Qt.ItemDataRole.UserRole + 1, macro['name'])
+            item.setData(Qt.ItemDataRole.UserRole + 2, ', '.join(filter(None, slots)))
+            item.setData(Qt.ItemDataRole.UserRole + 3, macro_badge_color(macro))
             item.setForeground(QColor(macro_label_color(macro)))
             item.setToolTip(MODES[macro.get("mode", "once")] + " · Doble clic para editar")
         if self.device:

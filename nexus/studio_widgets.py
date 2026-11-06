@@ -4,11 +4,11 @@ import sys
 import math
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QRectF, QPointF, QMimeData, QPoint, QSize
-from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QDrag, QPainterPath, QIcon, QRegion
+from PySide6.QtCore import Qt, Signal, QRectF, QPointF, QMimeData, QPoint, QSize, QEvent
+from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QDrag, QPainterPath, QIcon, QRegion, QFont
 from PySide6.QtWidgets import (QWidget, QListWidget, QFrame, QLabel, QVBoxLayout, QHBoxLayout,
                               QPushButton, QDialog, QDialogButtonBox, QComboBox,
-                              QStyledItemDelegate, QStyleOptionViewItem, QStyle)
+                              QStyledItemDelegate, QStyleOptionViewItem, QStyle, QLineEdit)
 from .widgets import DeviceArt, label, button, STYLE
 from .core import MODES
 
@@ -34,6 +34,13 @@ QLineEdit, QComboBox, QSpinBox { background: #222326; border: 1px solid #414146;
 QListWidget { background: transparent; border: none; border-radius: 0; }
 QListWidget::item { border-bottom: 1px solid #3c3c3f; padding: 11px 0; border-radius: 0; }
 QListWidget::item:selected { background: #36383c; color: white; }
+QListWidget#macroLibrary { background: transparent; border: none; padding: 0; }
+QListWidget#macroLibrary::item { padding: 6px 0; }
+QListWidget#assignedButtons { background: #1c1d20; border: 1px solid #3c3c3f; border-radius: 5px; padding: 4px; }
+QLineEdit#macroSearch { background: transparent; border: none; border-bottom: 1px solid #999; border-radius: 0; padding: 6px 0; }
+QLineEdit#macroSearch:focus { border-bottom: 1px solid #00b7ed; }
+QLabel#macroSection { color: white; font-size: 13px; border-bottom: 2px solid white; padding-bottom: 5px; }
+QLabel#macroInstructions { color: #eee; font-size: 12px; font-weight: 600; }
 QTableWidget { background: #151515; alternate-background-color: #1c1c1c; border-color: #333; }
 QHeaderView::section { background: #282828; color: #aaa; }
 QCheckBox::indicator:checked { background: #00b7ed; border: 3px solid #194957; }
@@ -450,6 +457,43 @@ class HubCard(QFrame):
         self.selected.emit(self.device)
 
 
+class AssignmentPanel(QFrame):
+    def update_minimum_height(self):
+        layout = self.layout()
+        if layout:
+            # Include wrapped labels at the actual scroll viewport width.
+            height = max(layout.minimumSize().height(), layout.totalMinimumHeightForWidth(self.width()))
+            if self.minimumHeight() != height:
+                self.setMinimumHeight(height)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.update_minimum_height()
+
+    def event(self, event):
+        result = super().event(event)
+        if event.type() == QEvent.Type.LayoutRequest:
+            self.update_minimum_height()
+        return result
+
+
+class MacroSearch(QLineEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName('macroSearch')
+        self.setTextMargins(25, 0, 0, 0)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QColor('#eee'), 1.6))
+        y = self.height() / 2 - 2
+        painter.drawEllipse(QPointF(8, y), 4, 4)
+        painter.drawLine(QPointF(11, y + 3), QPointF(15, y + 7))
+        painter.end()
+
+
 class MacroColorDelegate(QStyledItemDelegate):
     def paint(self, painter, option, index):
         option = QStyleOptionViewItem(option)
@@ -460,6 +504,29 @@ class MacroColorDelegate(QStyledItemDelegate):
         rect = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText, option, option.widget)
         brush = index.data(Qt.ItemDataRole.ForegroundRole)
         painter.save()
+        name = index.data(Qt.ItemDataRole.UserRole + 1)
+        slots = index.data(Qt.ItemDataRole.UserRole + 2)
+        if name is not None:
+            badge = QRectF(rect.left(), rect.center().y() - 9, 18, 18)
+            badge_color = QColor(index.data(Qt.ItemDataRole.UserRole + 3) or '#999999')
+            painter.fillRect(badge, badge_color)
+            luminance = .2126 * badge_color.red() + .7152 * badge_color.green() + .0722 * badge_color.blue()
+            painter.setPen(QColor('#202124' if luminance > 180 else 'white'))
+            font = QFont(option.font)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(badge, Qt.AlignmentFlag.AlignCenter, 'M')
+            rect.setLeft(rect.left() + 30)
+            text = name
+            if slots:
+                # Reserve a right-aligned column without crowding long names.
+                painter.setFont(option.font)
+                width = min(option.fontMetrics.horizontalAdvance(slots) + 8, rect.width() // 2)
+                slot_rect = QRectF(rect.right() - width, rect.top(), width, rect.height())
+                painter.setPen(brush.color() if brush else QColor('white'))
+                painter.drawText(slot_rect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                    option.fontMetrics.elidedText(slots, Qt.TextElideMode.ElideRight, int(width)))
+                rect.setRight(int(slot_rect.left()) - 12)
         painter.setFont(option.font)
         painter.setPen(brush.color() if brush else QColor('white'))
         painter.drawText(rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
@@ -602,17 +669,6 @@ class AssignmentCanvas(QWidget):
 
     def resizeEvent(self, event):
         self.arrange()
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        if not self.device:
-            return
-        # Paint the reference before the overlay, not as a sibling that covers it.
-        p = QPainter(self)
-        p.setPen(QColor("#aaa"))
-        p.drawText(QRectF(30, self.height() - 32, self.width() - 60, 26), Qt.AlignmentFlag.AlignCenter,
-                   "Arrastra una macro a un botón, o haz clic en un objetivo para asignarla.")
-        p.end()
 
     def slot_at(self, point):
         for slot, rect in self.label_rects.items():

@@ -11,6 +11,35 @@ from nexus.studio_widgets import STYLE
 
 
 class ApplicationTests(unittest.TestCase):
+    def test_installer_shutdown_closes_even_with_invalid_editor_without_dialog(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            window = MainWindow(Store(Path(directory)))
+            window.show()
+            with patch.object(window, 'leave_editor', return_value=False), patch('nexus.app.QMessageBox.question') as question:
+                window.installer_shutdown()
+                self.assertTrue(window._closing)
+                self.assertFalse(window.isVisible())
+                question.assert_not_called()
+            window.installer_shutdown()  # repeated requests are harmless
+
+    def test_installer_message_requests_shutdown_without_processing_raw_input(self):
+        import ctypes
+        from ctypes import wintypes
+        from unittest.mock import patch
+        from nexus.app import Events, NativeInput
+        events = Events()
+        received = []
+        events.shutdown.connect(lambda: received.append(True))
+        native = NativeInput(events)
+        message = wintypes.MSG()
+        message.message = native.shutdown_message
+        self.assertGreater(message.message, 0)
+        with patch('nexus.app.win.read_input') as read:
+            self.assertEqual(native.nativeEventFilter(None, ctypes.addressof(message)), (True, 0))
+            read.assert_not_called()
+        self.assertEqual(received, [True])
+
     def test_empty_assignment_starts_macro_creation_instead_of_error(self):
         from unittest.mock import patch
         from nexus.windows import Device

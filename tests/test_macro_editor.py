@@ -138,8 +138,10 @@ class MacroEditorTests(unittest.TestCase):
         self.assertEqual(stored[0]['color'],'#23aaff')
         self.assertEqual(stored[1]['id'],new_id)
         self.assertEqual(stored[1]['color'],'#00aa44')
-        self.assertEqual(self.window.assign_library.item(0).foreground().color().name(),'#23aaff')
-        self.assertEqual(self.window.assign_library.item(1).foreground().color().name(),'#00aa44')
+        self.assertEqual(self.window.assign_library.item(0).foreground().color().name(),'#ffffff')
+        self.assertEqual(self.window.assign_library.item(1).foreground().color().name(),'#ffffff')
+        self.assertEqual(self.window.assign_library.item(0).data(Qt.ItemDataRole.UserRole + 3),'#23aaff')
+        self.assertEqual(self.window.assign_library.item(1).data(Qt.ItemDataRole.UserRole + 3),'#00aa44')
 
     def test_default_macro_names_are_white_until_color_is_explicitly_chosen(self):
         from nexus.core import DEFAULT_MACRO_COLOR, macro_label_color
@@ -149,12 +151,13 @@ class MacroEditorTests(unittest.TestCase):
         with patch('nexus.studio.QColorDialog.getColor',return_value=QColor(DEFAULT_MACRO_COLOR)):
             self.window.choose_macro_color()
         self.assertTrue(self.window.commit_draft())
-        self.assertEqual(self.window.assign_library.item(0).foreground().color().name(),DEFAULT_MACRO_COLOR)
+        self.assertEqual(self.window.assign_library.item(0).foreground().color().name(),'#ffffff')
         saved = Store(Path(self.directory.name)).active['macros'][0]
+        self.assertEqual(self.window.assign_library.item(0).data(Qt.ItemDataRole.UserRole + 3),DEFAULT_MACRO_COLOR)
         self.assertTrue(saved['custom_color'])
-        self.assertEqual(macro_label_color(saved),DEFAULT_MACRO_COLOR)
+        self.assertEqual(macro_label_color(saved),'#ffffff')
         self.assertEqual(macro_label_color(dict(color=DEFAULT_MACRO_COLOR)),'#ffffff')
-        self.assertEqual(macro_label_color(dict(color='#00aa44')),'#00aa44')
+        self.assertEqual(macro_label_color(dict(color='#00aa44')),'#ffffff')
 
     def test_sequence_shows_three_sections_and_each_plus_edits_its_own_phase(self):
         self.window.mode_combo.setCurrentIndex(self.window.mode_combo.findData('sequence'))

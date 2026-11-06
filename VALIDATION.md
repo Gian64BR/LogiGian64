@@ -1,3 +1,36 @@
+# Verificación local de LogiGian64 0.2.22
+
+- 135 pruebas automatizadas aprobadas.
+- Nombres y asignaciones blancos; el color personalizado solo se muestra en el icono M de la biblioteca. Contraste del glifo ajustado para fondos claros.
+- Diagnóstico de lectura del G502 conectado: dos zonas RGB, ubicaciones 1 (principal/DPI) y 2 (logotipo), con apagado, color fijo, respiración y ciclo.
+- Prueba del transporte físico: el G502 confirmó parámetros de color fijo, respiración y ciclo en ambas zonas. Se restauraron efectos, propietario, botones, modo y DPI al terminar. Esto verifica las respuestas del dispositivo; no sustituye la revisión visual del usuario.
+- Edición activa el control físico; cambios recibidos durante una confirmación vuelven a enviarse; una confirmación tardía no reactiva un control apagado.
+- Seleccionar un color desde ciclo/apagado cambia a color fijo. La vista previa de la imagen incluida tiñe las barras y el logotipo sin pintar rectángulos externos.
+- Panel RGB con desplazamiento vertical para ventanas pequeñas. Compilación local para revisión; sin publicación en GitHub.
+
+# Verificación local de LogiGian64 0.2.21
+
+- 132 pruebas automatizadas aprobadas.
+- Capturas del panel renovado revisadas a 1280 × 660 y 1920 × 1020. Separación de listas comprobada también a 1000 × 580.
+- La altura mínima incluye los textos que ocupan varias líneas para evitar solapamientos.
+- Compilación local para revisión del usuario; sin publicación en GitHub.
+
+# Verificación local de LogiGian64 0.2.20
+
+- 132 pruebas automatizadas: cierre solicitado por mensaje nativo, salida sin diálogo bloqueante con un borrador inválido y panel adaptable limpio incluidos.
+- Prueba aislada en Windows: se termina un ejecutable que no responde, se conserva otro con el mismo nombre ubicado en otra carpeta y repetir el cierre funciona sin procesos abiertos.
+- La desinstalación y actualización esperan al cierre completo o se detienen con error. No se reinicia automáticamente la aplicación anterior.
+- Los perfiles se conservan; la limpieza afecta al proceso y a los archivos de instalación.
+- No se ha desinstalado la aplicación real del usuario ni se publica esta compilación en GitHub.
+
+# Verificación local de LogiGian64 0.2.19
+
+- 130 pruebas automatizadas aprobadas.
+- Panel de asignaciones comprobado a 1000 × 580, 1093 × 610, 1280 × 660 y 1920 × 1020 píxeles lógicos.
+- Las listas conservan una altura legible; el panel completo permite desplazamiento vertical sin recorte horizontal. Los controles inferiores permanecen accesibles.
+- La ventana inicial respeta el área disponible de la pantalla. Las páginas ocultas no fuerzan su altura sobre Asignaciones.
+- Capturas locales revisadas. Instalador local para pruebas. Pendiente de probar físicamente en la laptop del usuario.
+
 # Verificación local de LogiGian64 0.2.18
 
 - 129 pruebas automatizadas aprobadas.

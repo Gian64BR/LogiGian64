@@ -5,11 +5,11 @@ import math
 import time
 
 from PySide6.QtCore import Qt, QTimer, QRectF, QSignalBlocker
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtGui import QColor, QPainter, QImage, QPixmap
 from PySide6.QtWidgets import (QWidget, QFrame, QHBoxLayout, QVBoxLayout, QTabBar,
-                              QComboBox, QSlider, QCheckBox, QLineEdit, QColorDialog)
+                              QComboBox, QSlider, QCheckBox, QLineEdit, QColorDialog, QScrollArea)
 from .widgets import label, button
-from .studio_widgets import HardwareArt
+from .studio_widgets import HardwareArt, AssignmentPanel
 from .lighting_protocol import clean_lighting, EFFECT_NAMES
 
 DEFAULT_LIGHT = dict(effect=10, color='#ff0000', period=5000, brightness=100)
@@ -49,6 +49,24 @@ class LightingPreview(HardwareArt):
         self.animation.timeout.connect(self.animate)
         self._fitted_picture = None
         self._fitted_key = None
+        self.led_base = None
+        self.led_masks = {}
+        self._led_picture_key = self.picture.cacheKey()
+        if self.bundled_g502 and not self.picture.isNull():
+            base = self.picture.toImage().convertToFormat(QImage.Format.Format_ARGB32)
+            for zone, bounds in ((0, (430, 480, 50, 100)), (1, (500, 620, 100, 90))):
+                x, y, width, height = bounds
+                mask = QImage(width, height, QImage.Format.Format_ARGB32)
+                mask.fill(Qt.GlobalColor.transparent)
+                for yy in range(height):
+                    for xx in range(width):
+                        pixel = base.pixelColor(x + xx, y + yy)
+                        if pixel.blue() > 55 and pixel.blue() > pixel.red() * 1.3 and pixel.green() > pixel.red() * 1.2:
+                            level = max(pixel.blue(), pixel.green())
+                            mask.setPixelColor(xx, yy, QColor(255, 255, 255, level))
+                            base.setPixelColor(x + xx, y + yy, QColor(0, 0, 0, pixel.alpha()))
+                self.led_masks[zone] = (bounds, QPixmap.fromImage(mask))
+            self.led_base = QPixmap.fromImage(base)
 
     def animate(self):
         if self.isVisible():
@@ -80,6 +98,29 @@ class LightingPreview(HardwareArt):
         if self.picture.isNull():
             self.color = self.zone_color(1).name()
             return super().paintEvent(event)
+        if self.led_base is not None and self.picture.cacheKey() == self._led_picture_key:
+            p = QPainter(self)
+            p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            fitted, source = self.fitted_rect(), self.source_rect()
+            key = (self.picture.cacheKey(), self.width(), self.height())
+            if key != self._fitted_key:
+                self._fitted_picture = self.led_base.copy(source.toRect()).scaled(
+                    max(1, round(fitted.width())), max(1, round(fitted.height())),
+                    Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                self._fitted_key = key
+            p.drawPixmap(fitted, self._fitted_picture, QRectF(self._fitted_picture.rect()))
+            scale = fitted.width() / source.width()
+            for zone, (bounds, mask) in self.led_masks.items():
+                tinted = mask.copy()
+                tint = QPainter(tinted)
+                tint.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+                tint.fillRect(tinted.rect(), self.zone_color(zone))
+                tint.end()
+                x, y, width, height = bounds
+                p.drawPixmap(QRectF(fitted.x() + (x-source.x()) * scale,
+                    fitted.y() + (y-source.y()) * scale, width*scale, height*scale), tinted, QRectF(tinted.rect()))
+            p.end()
+            return
         key = (self.picture.cacheKey(), self.width(), self.height())
         if key != self._fitted_key:
             self._fitted_picture = self.picture.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
@@ -103,6 +144,8 @@ class LightingPanel(QWidget):
         self.device = None
         self.supported = self.active = self.pending = False
         self.loading = False
+        self.in_flight = False
+        self.sent_configs = None
         self.zones = []
         self.configs = {0: DEFAULT_LIGHT.copy(), 1: DEFAULT_LIGHT.copy()}
         self.preview = None
@@ -113,9 +156,14 @@ class LightingPanel(QWidget):
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(30)
-        sidebar = QFrame()
+        sidebar = AssignmentPanel()
         sidebar.setObjectName('assignmentPanel')
-        sidebar.setFixedWidth(300)
+        self.sidebar_scroll = QScrollArea()
+        self.sidebar_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.sidebar_scroll.setWidgetResizable(True)
+        self.sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.sidebar_scroll.setFixedWidth(300)
+        self.sidebar_scroll.setWidget(sidebar)
         left = QVBoxLayout(sidebar)
         left.setContentsMargins(16, 22, 16, 20)
         left.setSpacing(14)
@@ -190,9 +238,8 @@ class LightingPanel(QWidget):
         left.addWidget(button('RESTABLECER ESTA ZONA', self.reset_preview))
         left.addStretch()
         self.status_label = label('Activa el control para aplicar los cambios al ratón.', 'muted', True)
-        self.status_label.setMinimumHeight(65)
         left.addWidget(self.status_label)
-        row.addWidget(sidebar)
+        row.addWidget(self.sidebar_scroll)
         right = QVBoxLayout()
         right.setContentsMargins(12, 15, 12, 18)
         right.addStretch(1)
@@ -216,6 +263,8 @@ class LightingPanel(QWidget):
         self.device = device
         self.supported = (device.vid, device.pid) == ('046D', 'C08B')
         self.active = self.pending = False
+        self.in_flight = False
+        self.sent_configs = None
         self.zones = []
         self.configs = {0: DEFAULT_LIGHT.copy(), 1: DEFAULT_LIGHT.copy()}
         try:
@@ -231,7 +280,7 @@ class LightingPanel(QWidget):
             self.preview.hide()
             self.preview.deleteLater()
         self.preview = LightingPreview(device)
-        self.preview.setMinimumSize(230, 420)
+        self.preview.setMinimumSize(200, 280)
         self.preview.setMaximumWidth(400)
         self.preview_row.insertWidget(1, self.preview, 1)
         if self.preview_row.count() == 2:
@@ -256,10 +305,9 @@ class LightingPanel(QWidget):
         self.hex.setText(config['color'])
         self.period.setValue(config['period'])
         self.brightness.setValue(config['brightness'])
-        if self.zones:
-            options = self.zones[max(0, self.tabs.currentIndex())]['effects']
-            for index in range(self.effect.count()):
-                self.effect.model().item(index).setEnabled(self.effect.itemData(index) in options)
+        options = self.zones[max(0, self.tabs.currentIndex())]['effects'] if self.zones else EFFECT_NAMES
+        for index in range(self.effect.count()):
+            self.effect.model().item(index).setEnabled(self.effect.itemData(index) in options)
         self.loading = False
         self.refresh_preview()
 
@@ -292,13 +340,20 @@ class LightingPanel(QWidget):
         if self.device:
             self.window.preferences().setValue(f'lighting/{self.device.id}', json.dumps(self.configs))
         self.refresh_preview()
-        if self.active:
+        if self.active or self.pending:
             self.status_label.setText('Aplicando iluminación al ratón…')
             self.apply_timer.start()
+        elif self.supported:
+            # Editing a color is an explicit request to apply it, rather than
+            # silently leaving the user in a preview-only state.
+            self.control.setChecked(True)
         else:
             self.status_label.setText('Vista previa guardada. Activa el control para aplicarla al ratón.')
 
     def set_color(self, color):
+        if self.effect.currentData() not in (1, 10):
+            with QSignalBlocker(self.effect):
+                self.effect.setCurrentIndex(self.effect.findData(1))
         self.hex.setText(color)
         self.edited()
 
@@ -351,6 +406,8 @@ class LightingPanel(QWidget):
                 self.status_label.setText('Control no activado. Vista previa disponible.')
 
     def apply_changes(self):
+        if not self.control.isChecked() or self.in_flight:
+            return
         session = self.window.g502
         if not self.device or not session or not session.ready or session.device.id != self.device.id:
             return
@@ -358,7 +415,9 @@ class LightingPanel(QWidget):
             targets = [z['index'] for z in self.zones]
             if not targets:
                 raise OSError('Este dispositivo no ha comunicado zonas RGB compatibles.')
-            session.set_lighting({zone: self.configs[zone].copy() for zone in targets})
+            self.sent_configs = {zone: self.configs[zone].copy() for zone in targets}
+            session.set_lighting(self.sent_configs)
+            self.in_flight = True
             self.status_label.setText('Esperando confirmación del ratón…')
         except (OSError, ValueError) as error:
             self.status_label.setText(str(error))
@@ -371,16 +430,22 @@ class LightingPanel(QWidget):
             return
         kind = data['kind']
         if kind == 'ready':
+            self.in_flight = False
             self.zones = data.get('lighting') or []
             if self.zones:
                 with QSignalBlocker(self.tabs):
                     while self.tabs.count():
                         self.tabs.removeTab(0)
                     for zone in self.zones:
-                        name = {1: 'PRINCIPAL', 2: 'LOGOTIPO'}.get(zone['location'], f"ZONA {zone['index'] + 1}")
+                        name = {1: 'PRINCIPAL · DPI', 2: 'LOGOTIPO'}.get(zone['location'], f"ZONA {zone['index'] + 1}")
                         self.tabs.addTab(name)
                         self.configs.setdefault(zone['index'], DEFAULT_LIGHT.copy())
+                        supported = zone['effects']
+                        config = self.configs[zone['index']]
+                        if supported and config['effect'] not in supported:
+                            config['effect'] = 1 if 1 in supported else next(iter(supported))
                 self.show_zone()
+                self.status_label.setText(f'{len(self.zones)} zonas RGB detectadas. Cambia un color o efecto para aplicarlo al ratón.')
                 if self.pending:
                     self.apply_changes()
             elif self.pending:
@@ -389,19 +454,28 @@ class LightingPanel(QWidget):
                     self.control.setChecked(False)
                 self.status_label.setText(data.get('lighting_error') or 'Control RGB no disponible en este dispositivo.')
         elif kind == 'lighting':
+            self.in_flight = False
+            if not self.control.isChecked():
+                return  # A restore is already queued; do not reactivate.
             self.active, self.pending = True, False
-            self.status_label.setText('Iluminación aplicada y confirmada por el G502.')
+            self.status_label.setText(f'Iluminación confirmada en {len(self.zones)} zonas RGB del G502.')
+            current = {z['index']: self.configs[z['index']] for z in self.zones}
+            if self.sent_configs != current:
+                self.apply_timer.start()
         elif kind == 'lighting_restore':
+            self.in_flight = False
             self.active = self.pending = False
             with QSignalBlocker(self.control):
                 self.control.setChecked(False)
             self.status_label.setText('Iluminación anterior restaurada. Vista previa disponible.')
         elif kind == 'lighting_error':
+            self.in_flight = False
             self.pending = False
             self.status_label.setText('No confirmado: ' + data['error'])
             with QSignalBlocker(self.control):
                 self.control.setChecked(self.active)
         elif kind == 'disconnected':
+            self.in_flight = False
             self.active = self.pending = False
             self.apply_timer.stop()
             with QSignalBlocker(self.control):

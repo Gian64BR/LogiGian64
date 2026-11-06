@@ -1,9 +1,11 @@
-LogiGian64 0.2.18 — Editor de secuencia y color.
+LogiGian64 0.2.22 — Control RGB e iconos de macro.
 
-- Iconos de tipos de macro con trazos y tamaños uniformes.
-- Las fases Al pulsar, Al mantener y Al soltar se muestran juntas, cada una con su propio botón para añadir o grabar.
-- Restablecer color recupera el rojo del editor y los nombres blancos fuera de la macro.
-- Se conservan las mejoras anteriores de macros, vistas, reconexión, cierre y sensibilidad por perfil.
+- El color personalizado cambia solo el icono M de la biblioteca; los nombres y asignaciones permanecen blancos.
+- Editar un color activa su envío al mouse. Los cambios realizados durante una confirmación vuelven a enviarse.
+- Seleccionar color desde ciclo o apagado cambia a color fijo.
+- Vista previa con las barras DPI y el logotipo coloreados, sin bloques fuera del mouse.
+- Panel RGB con desplazamiento para ventanas pequeñas.
+- Se conservan las mejoras anteriores, los perfiles y el cierre completo al instalar o desinstalar.
 
-129 pruebas automatizadas aprobadas. Instalador local para revisión; no publicado en GitHub.
-Cierra el programa antes de instalar. Los perfiles se conservan.
+135 pruebas automatizadas aprobadas. El G502 conectado confirmó parámetros en ambas zonas y se restauró su estado tras la prueba.
+Instalador local para revisión; no publicado en GitHub.

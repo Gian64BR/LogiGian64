@@ -1,11 +1,12 @@
 """Editable DPI levels with confirmed, volatile G502 HERO sensor control."""
 import json
 
-from PySide6.QtCore import Qt, QPointF, Signal, QTimer
+from PySide6.QtCore import Qt, QPointF, Signal, QTimer, QSignalBlocker
 from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
-from PySide6.QtWidgets import QWidget, QFrame, QHBoxLayout, QVBoxLayout, QSlider, QInputDialog
+from PySide6.QtWidgets import QWidget, QFrame, QHBoxLayout, QVBoxLayout, QSlider, QInputDialog, QComboBox, QScrollArea
 
 from .widgets import label, button
+from .studio_widgets import AssignmentPanel
 
 DEFAULT_LEVELS = [800, 1450, 2400, 3200, 6400]
 
@@ -125,6 +126,7 @@ class SensitivityPanel(QWidget):
         self.connected = False
         self.pending_dpi = None
         self.current_dpi = None
+        self.confirmed_polling = None
         self.apply_timer = QTimer(self)
         self.apply_timer.setSingleShot(True)
         self.apply_timer.setInterval(220)
@@ -132,9 +134,14 @@ class SensitivityPanel(QWidget):
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(28)
-        sidebar = QFrame()
+        sidebar = AssignmentPanel()
+        self.sidebar_scroll = QScrollArea()
+        self.sidebar_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.sidebar_scroll.setWidgetResizable(True)
+        self.sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.sidebar_scroll.setFixedWidth(300)
+        self.sidebar_scroll.setWidget(sidebar)
         sidebar.setObjectName('assignmentPanel')
-        sidebar.setFixedWidth(300)
         left = QVBoxLayout(sidebar)
         left.setContentsMargins(16, 22, 16, 22)
         left.addWidget(label('Sensibilidad (DPI)', 'sectionTitle'))
@@ -158,12 +165,26 @@ class SensitivityPanel(QWidget):
         left.addWidget(self.dpi_button)
         left.addSpacing(20)
         left.addWidget(label('VELOCIDAD DE RESPUESTA\n(POR SEGUNDO)', 'eyebrow'))
-        left.addWidget(label('1000     500     250     125 Hz\nControl de frecuencia no disponible.', 'muted', True))
+        self.polling_combo = QComboBox()
+        self.polling_combo.setAccessibleName('Frecuencia de respuesta del mouse en Hz')
+        self.polling_combo.setEnabled(False)
+        self.polling_combo.activated.connect(self.apply_polling)
+        left.addWidget(self.polling_combo)
+        self.polling_button = button('CONSULTAR FRECUENCIAS', self.apply_polling)
+        left.addWidget(self.polling_button)
+        self.polling_notice = label('Frecuencia física sin consultar.', 'muted', True)
+        left.addWidget(self.polling_notice)
         left.addSpacing(20)
         left.addWidget(button('RESTABLECER NIVELES\nPREDETERMINADOS', self.reset_levels))
         left.addStretch()
-        row.addWidget(sidebar)
-        right = QVBoxLayout()
+        row.addWidget(self.sidebar_scroll)
+        content = AssignmentPanel()
+        self.content_scroll = QScrollArea()
+        self.content_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.content_scroll.setWidgetResizable(True)
+        self.content_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.content_scroll.setWidget(content)
+        right = QVBoxLayout(content)
         right.setContentsMargins(12, 18, 12, 20)
         right.addWidget(label('VELOCIDADES DE DPI', 'sectionTitle'), 0, Qt.AlignmentFlag.AlignHCenter)
         legend = label('NIVEL SELECCIONADO', 'eyebrow')
@@ -177,6 +198,7 @@ class SensitivityPanel(QWidget):
         right.addWidget(self.track)
         right.addStretch(1)
         self.confirmed_label = label('DPI físico sin consultar', 'muted', True)
+        self.confirmed_label.setMinimumWidth(320)
         right.addWidget(self.confirmed_label, 0, Qt.AlignmentFlag.AlignHCenter)
         right.addStretch(1)
         right.addWidget(label('VELOCIDAD DEL PUNTERO DE WINDOWS', 'eyebrow'))
@@ -189,13 +211,15 @@ class SensitivityPanel(QWidget):
         right.addWidget(button('APLICAR A WINDOWS', window.apply_speed), 0, Qt.AlignmentFlag.AlignLeft)
         self.hardware_info = label('', 'muted', True)
         self.hardware_info.hide()
-        row.addLayout(right, 1)
+        row.addWidget(self.content_scroll, 1)
         self.refresh_values()
 
     def load_device(self, device):
         self.apply_timer.stop()
         self.pending_dpi = None
         self.device_id = device.id
+        self.polling_combo.clear()
+        self.polling_combo.setEnabled(False)
         self.supported = (device.vid, device.pid) == ('046D', 'C08B')
         self.connected = False
         self.current_dpi = None
@@ -215,15 +239,36 @@ class SensitivityPanel(QWidget):
         self.refresh_values()
         session = self.window.g502
         self.dpi_button.setEnabled(self.supported)
+        self.polling_button.setEnabled(self.supported)
+        self.polling_button.setText('CONSULTAR FRECUENCIAS')
+        self.polling_notice.setText('Activa el control para consultar los Hz admitidos.' if self.supported else 'Control de frecuencia no disponible para este modelo.')
         self.notice.setText('G502 HERO: activa el control directo para aplicar DPI al sensor. No modifica la memoria integrada.' if self.supported else 'Niveles de referencia: este modelo aún no tiene control físico de DPI.')
         self.confirmed_label.setText('DPI físico sin consultar' if self.supported else 'DPI físico no disponible para este modelo')
         if session and session.ready and session.device.id == device.id:
-            self.hardware_changed({'kind': 'ready', 'device_id': device.id, 'dpi': session.dpi_state})
+            self.hardware_changed({'kind': 'ready', 'device_id': device.id, 'dpi': session.dpi_state, 'polling': session.polling.state() if getattr(session, 'polling', None) else None})
 
     def hardware_changed(self, data):
         if data.get('device_id') != self.device_id:
             return
         kind = data['kind']
+        if kind in ('ready', 'polling'):
+            polling = data.get('polling') if kind == 'ready' else data
+            self.confirmed_polling = polling['current'] if polling else None
+            with QSignalBlocker(self.polling_combo):
+                self.polling_combo.clear()
+                if polling:
+                    from .polling import RATE_INTERVALS
+                    for hz in polling['values']:
+                        self.polling_combo.addItem(f'{hz} Hz · {RATE_INTERVALS[hz]} ms', hz)
+                    self.polling_combo.setCurrentIndex(self.polling_combo.findData(polling['current']))
+            self.polling_combo.setEnabled(bool(polling))
+            self.polling_button.setEnabled(bool(polling))
+            self.polling_button.setText('APLICAR FRECUENCIA')
+            self.polling_notice.setText(f"Frecuencia confirmada: {polling['current']} Hz. Se guarda en este perfil." if polling else 'Frecuencia no disponible: ' + str(data.get('polling_error') or 'el mouse no la comunicó'))
+        elif kind == 'polling_error':
+            with QSignalBlocker(self.polling_combo):
+                self.polling_combo.setCurrentIndex(self.polling_combo.findData(self.confirmed_polling))
+            self.polling_notice.setText('Frecuencia NO confirmada: ' + data['error'])
         if kind == 'ready':
             state = data.get('dpi')
             self.connected = bool(state)
@@ -249,12 +294,36 @@ class SensitivityPanel(QWidget):
             self.current_dpi = None
             self.confirmed_label.setText('DPI NO confirmado: ' + data['error'])
         elif kind == 'disconnected':
+            self.polling_combo.setEnabled(False)
+            self.polling_button.setEnabled(self.supported)
+            self.polling_button.setText('CONSULTAR FRECUENCIAS')
+            self.polling_notice.setText('Control desconectado; frecuencia no consultada.')
             self.connected = False
             self.pending_dpi = None
             self.apply_timer.stop()
             self.confirmed_label.setText('Control directo desconectado; DPI seleccionado no aplicado.')
             self.notice.setText('Activa el control directo para cambiar el DPI físico del G502.')
             self.dpi_button.setText('ACTIVAR CONTROL Y APLICAR DPI')
+
+    def apply_polling(self, *_):
+        if not self.supported or not self.device_id:
+            return
+        session = self.window.g502
+        if not session or not session.ready or session.device.id != self.device_id:
+            if not session or not session.thread or not session.thread.is_alive():
+                self.window.activate_g502()
+            self.polling_notice.setText('Conectando para consultar la frecuencia…')
+            return
+        hz = self.polling_combo.currentData()
+        if hz is None:
+            return
+        try:
+            if not self.window.save_profile_sensitivity(self.device_id, polling_hz=hz):
+                return
+            session.set_polling(hz, profile_id=self.window.store.active_id)
+            self.polling_notice.setText(f'Solicitando {hz} Hz al mouse…')
+        except (OSError, ValueError) as error:
+            self.polling_notice.setText('Frecuencia no aplicada: ' + str(error))
 
     def apply_dpi(self):
         if not self.supported or not self.device_id:

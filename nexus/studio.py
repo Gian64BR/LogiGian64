@@ -60,6 +60,9 @@ class StudioWindow(MainWindow):
                     self.table.selectRow(row)
                     break
         if not self.recording and event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Delete:
+            if watched is getattr(self, 'timeline_scroll', None) or watched is self.timeline_scroll.viewport():
+                self.remove_step()
+                return True
             if watched is self.table or self.table.isAncestorOf(watched):
                 self.remove_step()
                 return True
@@ -477,6 +480,9 @@ class StudioWindow(MainWindow):
         self.phase_combo.hide()  # Internal phase routing; all three are visible below.
         self.timeline_scroll = QScrollArea()
         self.timeline_scroll.setWidgetResizable(True)
+        self.timeline_scroll.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.timeline_scroll.installEventFilter(self)
+        self.timeline_scroll.viewport().installEventFilter(self)
         self.timeline_scroll.setMinimumHeight(150)
         self.timeline_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.timeline_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
@@ -812,6 +818,7 @@ class StudioWindow(MainWindow):
             return macro['id']
 
     def load_macro(self, row):
+        self.table.hide()
         self._editor_loading = True
         super().load_macro(row)
         macro = self.current_macro()
@@ -830,6 +837,10 @@ class StudioWindow(MainWindow):
         self.update_mode_controls()
         self.apply_standard_delay()
         self.render_events()
+
+        self.table.hide()
+        self.table.verticalScrollBar().setValue(0)
+        self.restore_editor_scroll(0)
 
     def read_sections(self):
         self.phase_drafts[self.phase] = copy.deepcopy(self.read_draft())
@@ -1198,16 +1209,37 @@ class StudioWindow(MainWindow):
             return
         self.read_draft()
         rows = sorted({index.row() for index in self.table.selectedIndexes()}, reverse=True)
+        if not rows:
+            return
+        # A focused chip is about to disappear. Keep Qt from moving focus to
+        # the final + button and scrolling the entire timeline to it.
+        if self.timeline_scroll.isAncestorOf(QApplication.focusWidget()):
+            self.timeline_scroll.setFocus(Qt.FocusReason.OtherFocusReason)
         for row in rows:
             del self.draft[row]
         if any(event['type'] != 'wait' for event in self.draft):
-            while self.draft and self.draft[0]['type'] == 'wait':
+            while self.draft and self.draft[0]['type'] == 'wait' and not self.draft[0].get('manual', False):
                 self.draft.pop(0)
-            while self.draft and self.draft[-1]['type'] == 'wait':
+            while self.draft and self.draft[-1]['type'] == 'wait' and not self.draft[-1].get('manual', False):
                 self.draft.pop()
         self.render_events()
+        if self.draft:
+            self.table.selectRow(min(min(rows), len(self.draft) - 1))
+
+    def restore_editor_scroll(self, value):
+        self._scroll_generation = getattr(self, '_scroll_generation', 0) + 1
+        generation = self._scroll_generation
+        def restore():
+            if generation == self._scroll_generation:
+                self.timeline_scroll.verticalScrollBar().setValue(value)
+        restore()
+        QTimer.singleShot(0, restore)
 
     def render_timeline(self):
+        scroll_value = self.timeline_scroll.verticalScrollBar().value()
+        focused = QApplication.focusWidget()
+        if isinstance(focused, TimelineBlock) and self.timeline_scroll.isAncestorOf(focused):
+            self.timeline_scroll.setFocus(Qt.FocusReason.OtherFocusReason)
         self.timeline_timer.stop()
         self.timeline_pending = False
         if not hasattr(self, "timeline"):
@@ -1224,6 +1256,7 @@ class StudioWindow(MainWindow):
             self.timeline, self.timeline_content = self.single_timeline, self.single_timeline_content
             self.render_track(self.timeline, self.draft)
         self.highlight_steps()
+        self.restore_editor_scroll(scroll_value)
 
     def render_track(self, timeline, events, phase=None):
         while timeline.count():
@@ -1271,6 +1304,8 @@ class StudioWindow(MainWindow):
             return
         self.read_draft()
         self.draft[row]["delay_ms"] = value
+        if self.draft[row]['type'] == 'wait':
+            self.draft[row]['manual'] = True
         self.render_events()
 
     def reorder_timeline(self, source, destination):
@@ -1286,21 +1321,17 @@ class StudioWindow(MainWindow):
             self.draft = actions
         else:
             if self.draft[source]['type'] == 'wait':
-                destination = max(1, min(destination, len(self.draft)-1))
+                self.draft[source]['manual'] = True
             self.draft = reorder_tokens(self.draft, source, destination)
-            while self.draft and self.draft[0]['type'] == 'wait':
-                self.draft.pop(0)
-            while self.draft and self.draft[-1]['type'] == 'wait':
-                self.draft.pop()
         self.render_events()
 
     def select_step(self, index):
-        self.table.show()
         self.table.selectRow(index)
-        self.table.scrollToItem(self.table.item(index, 0))
 
     def toggle_table(self):
-        self.table.setVisible(not self.table.isVisible())
+        scroll_value = self.timeline_scroll.verticalScrollBar().value()
+        self.table.setVisible(self.table.isHidden())
+        self.restore_editor_scroll(scroll_value)
 
     def choose_macro_color(self):
         color = QColorDialog.getColor(QColor(self.macro_color), self, "Color de la macro")
@@ -1394,11 +1425,9 @@ class StudioWindow(MainWindow):
         self.read_draft()
         if len(self.draft) + len(events) > MAX_EVENTS:
             return self.error("La macro supera el límite de pasos.")
-        if events and all(event['type'] == 'wait' for event in events):
-            if sum(event['type'] != 'wait' for event in self.draft) < 2:
-                return self.error('Añade primero dos acciones para colocar el retardo entre ellas.')
-            position = max(1, min(self.table.currentRow()+1, len(self.draft)-1))
-            self.draft[position:position] = events
-        else:
-            self.draft.extend(events)
+        if any(event['type'] == 'wait' for event in events):
+            if self.standard_delay.isChecked():
+                self.standard_delay.setChecked(False)
+            events = [{**event, 'manual': True} if event['type'] == 'wait' else event for event in events]
+        self.draft.extend(events)
         self.render_events()

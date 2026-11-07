@@ -41,11 +41,15 @@ def validate_sensitivity(value):
                 or any(b - a < 50 for a, b in zip(levels, levels[1:]))):
             raise ValueError('Niveles de sensibilidad incorrectos.')
         clean['levels'] = list(levels)
-    for key, low, high in (('selected', 0, 4), ('dpi', 100, 25600), ('pointer_speed', 1, 20)):
+    for key, low, high in (('selected', 0, 4), ('dpi', 100, 25600), ('pointer_speed', 1, 20), ('polling_hz', 125, 1000)):
         if key in value:
             if type(value[key]) is not int or not low <= value[key] <= high:
                 raise ValueError('Valor de sensibilidad incorrecto: ' + key)
             clean[key] = value[key]
+    if 'polling_hz' in clean:
+        from .polling import RATE_INTERVALS
+        if clean['polling_hz'] not in RATE_INTERVALS:
+            raise ValueError('Frecuencia de respuesta incorrecta.')
     return clean
 
 
@@ -101,7 +105,13 @@ def validate_events(events: list, *, initial_held=None, balanced=True) -> list[d
             if not isinstance(path, str) or "\x00" in path or not Path(path).is_absolute() or Path(path).suffix.lower() != ".exe":
                 raise ValueError(f"Paso {n}: selecciona una ruta absoluta a una aplicación .exe.")
             clean["path"] = path
-        elif kind != "wait":
+        elif kind == 'wait':
+            if 'manual' in event:
+                if type(event['manual']) is not bool:
+                    raise ValueError(f'Paso {n}: indicador de retardo manual incorrecto.')
+                if event['manual']:
+                    clean['manual'] = True
+        else:
             raise ValueError(f"Paso {n}: tipo de acción desconocido.")
         if identity:
             if clean["down"]:

@@ -8,7 +8,7 @@ from nexus.g502 import G502Session
 
 
 class FakeHid:
-    def __init__(self, refuse_start=False, fail_first_restore=False, dpi=False, refuse_dpi=False, lighting=None):
+    def __init__(self, refuse_start=False, fail_first_restore=False, dpi=False, refuse_dpi=False, lighting=None, polling=False):
         self.responses = queue.Queue()
         self.mode = 1
         self.mapping = list(range(1, 12))
@@ -20,6 +20,8 @@ class FakeHid:
         self.supports_dpi = dpi
         self.dpi = 3200
         self.refuse_dpi = refuse_dpi
+        self.supports_polling = polling
+        self.report_interval = 1
         self.lighting = lighting
 
     def open_path(self, path):
@@ -32,9 +34,16 @@ class FakeHid:
         answer = [0] * 16
         if index == 0:
             answer[0] = {0x8110: 13, 0x8100: 12, 0x2201: 10 if self.supports_dpi else 0,
-                         0x8070: 2 if self.lighting else 0}.get((data[0] << 8) | data[1], 0)
+                         0x8070: 2 if self.lighting else 0, 0x8060: 9 if self.supports_polling else 0}.get((data[0] << 8) | data[1], 0)
         elif index == 2 and self.lighting:
             answer = self.lighting.request(index, fn, data)
+        elif index == 9:
+            if fn == 0:
+                answer[0] = 0x8B
+            elif fn == 1:
+                answer[0] = self.report_interval
+            elif fn == 2:
+                self.report_interval = data[0]
         elif index == 10:
             if fn == 0:
                 answer[0] = 1

@@ -1,3 +1,28 @@
+# Verificación local de LogiGian64 0.2.26
+
+- 151 pruebas automatizadas aprobadas.
+- Añadir un retardo con selección previa lo coloca al final y desactiva los retardos estándar. También se puede crear un retardo como primer paso.
+- Movimiento inicio/medio/final comprobado en las tres fases de Secuencia y persistencia al guardar.
+- Retardos manuales en ambos extremos conservados al borrar acciones y reabrir la macro.
+- Los intervalos automáticos huérfanos siguen limpiándose; los retardos manuales se identifican con un campo opcional conservado en los perfiles.
+- Compilación local para revisión; sin publicación en GitHub.
+
+# Verificación local de LogiGian64 0.2.25
+
+- 147 pruebas automatizadas aprobadas.
+- Macros largas (180 acciones) normales y de Secuencia: selección sin abrir la tabla, apertura explícita, borrado con foco, Suprimir repetido sin desplazamiento y reapertura arriba con tabla cerrada.
+- Borrado de teclas accidentales usando retardos estándar seguido de tiempos manuales: exactamente una pausa entre las acciones supervivientes, sin pausas de acciones eliminadas. Borrar todas las acciones elimina los retardos generados.
+- Los retardos manuales siguen siendo pasos independientes; el recálculo de intervalos se aplica al modo estándar.
+- Compilación local para revisión; sin publicación en GitHub.
+
+# Verificación local de LogiGian64 0.2.24
+
+- 143 pruebas automatizadas aprobadas: detección de intervalos 0x8060, rechazo de valores no admitidos sin escribir, lectura tras cada cambio, restauración y reintentos, trabajador HID, persistencia por perfil y confirmación en la interfaz.
+- Prueba física del G502 conectado: anunció y confirmó 1000, 500, 250 y 125 Hz. Al cerrar restauró el intervalo original de 1 ms (1000 Hz), sin restauraciones pendientes. Verifica la configuración comunicada por el firmware, no una medición de tráfico USB.
+- El cambio de frecuencia no cambia el DPI ni la velocidad de Windows. Se usa la misma conexión HID y cola del control existente.
+- Captura de Sensibilidad a 1280 × 660 revisada; desplazamiento para mantener accesibles los controles.
+- Compilación local para revisión; sin publicación en GitHub.
+
 # Verificación local de LogiGian64 0.2.23
 
 - 138 pruebas automatizadas: numeración sin ventana inicial, nombre editable, cancelación sin crear registros, distribución adaptable de tarjetas y activación del perfil seleccionado incluidas.

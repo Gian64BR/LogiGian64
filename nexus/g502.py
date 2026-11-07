@@ -70,6 +70,7 @@ class G502Session:
         self.dpi_state = None
         self.original_dpi = None
         self.changed_dpi = False
+        self.polling = None
         self.lighting = None
         self.lighting_error = None
         self.commands = queue.Queue()
@@ -132,6 +133,12 @@ class G502Session:
             raise OSError("Activa el control directo del G502 antes de cambiar el DPI.")
         self.validate_dpi(value)
         self.commands.put(("dpi", (value, profile_id)))
+
+    def set_polling(self, hz, profile_id=None):
+        if not self.ready or not self.polling:
+            raise OSError('Control de frecuencia no disponible.')
+        self.polling.validate(hz)
+        self.commands.put(('polling', (hz, profile_id)))
 
     def validate_dpi(self, value):
         state = self.dpi_state
@@ -298,6 +305,11 @@ class G502Session:
                 self.changed_dpi = False
             except Exception as error:
                 failures.append("DPI original: " + str(error))
+        if self.polling and not self.device_removed.is_set():
+            try:
+                self.polling.restore(after_mode_change=restoring_mode and not self.changed_mode)
+            except (OSError, ValueError) as error:
+                failures.append('Frecuencia original: ' + str(error))
         return failures
 
     def _run(self, buttons):
@@ -324,6 +336,14 @@ class G502Session:
                 raise OSError("No se pudo guardar el mapa original de botones.")
             # Even a previously damaged host map must restore usable clicks.
             self.original_map[:2] = [1, 2]
+            polling_error = None
+            try:
+                from .polling import PollingControl
+                self.polling = PollingControl(self.request, self.feature(0x8060))
+                self.polling.load()
+            except (OSError, ValueError) as error:
+                self.polling = None
+                polling_error = str(error)
             dpi_error = None
             try:
                 self._load_dpi()
@@ -349,8 +369,13 @@ class G502Session:
                 self.dpi_state['current'] = self._read_dpi()
                 if self.dpi_state['current'] != self.original_dpi:
                     self._apply_dpi(self.original_dpi, notify=False)
+            if self.polling:
+                self.polling.current = self.polling.read()
+                if self.polling.current != self.polling.original:
+                    self.polling.apply(round(1000 / self.polling.original))
             self.ready = True
             self.on_hardware({'kind': 'ready', 'device_id': self.device.id, 'dpi': self.dpi_state, 'dpi_error': dpi_error,
+                              'polling': self.polling.state() if self.polling else None, 'polling_error': polling_error,
                               'lighting': self.lighting.zones if self.lighting else None, 'lighting_error': self.lighting_error})
             self.on_status(f"G502 conectado directamente · {self.count} botones físicos · Ctrl+Alt+F12 detiene macros")
             threading.Thread(target=self._monitor, name="G502Ownership", daemon=True).start()
@@ -359,6 +384,13 @@ class G502Session:
                     command, value = self.commands.get_nowait()
                     if command == 'buttons':
                         self._apply_map(value)
+                    elif command == 'polling':
+                        hz, profile_id = value
+                        try:
+                            state = self.polling.apply(hz)
+                            self.on_hardware(dict(kind='polling', device_id=self.device.id, profile_id=profile_id, **state))
+                        except (OSError, ValueError) as error:
+                            self.on_hardware(dict(kind='polling_error', device_id=self.device.id, profile_id=profile_id, error=str(error)))
                     elif command == 'dpi':
                         dpi_value, profile_id = value
                         try:

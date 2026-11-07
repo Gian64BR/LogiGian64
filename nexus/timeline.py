@@ -12,6 +12,10 @@ MIME = "application/x-logigian-timeline"
 def editor_events(events, standard=None, trim_leading=False):
     """Represent timing as separate rows; never invent a leading/trailing gap."""
     result = []
+    if standard is not None:
+        # Standard gaps belong to the surviving actions, not to deleted rows.
+        # Rebuild exactly one gap between actions on every normalization.
+        events = [event for event in events if event['type'] != 'wait']
     for event in events:
         event = copy.deepcopy(event)
         if event['type'] == 'wait':

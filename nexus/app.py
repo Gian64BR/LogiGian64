@@ -1063,6 +1063,13 @@ class MainWindow(QMainWindow):
         session = self.g502
         if session and session.ready:
             saved = self.profile_sensitivity(session.device.id)
+            polling = getattr(session, 'polling', None)
+            desired_rate = saved.get('polling_hz')
+            if polling and desired_rate is not None and desired_rate != polling.state()['current']:
+                try:
+                    session.set_polling(desired_rate, profile_id=self.store.active_id)
+                except (ValueError, OSError) as error:
+                    self.status('No se pudo recuperar la frecuencia del perfil: ' + str(error))
             desired = saved.get('dpi')
             current = (getattr(session, 'dpi_state', None) or {}).get('current')
             if desired is not None and desired != current:
@@ -1139,7 +1146,7 @@ class MainWindow(QMainWindow):
         if self._closing or data.get('generation', self._g502_generation) != self._g502_generation:
             return
         kind = data['kind']
-        if kind in ('dpi', 'dpi_error') and (data.get('profile_id') or self.store.active_id) != self.store.active_id:
+        if kind in ('dpi', 'dpi_error', 'polling', 'polling_error') and (data.get('profile_id') or self.store.active_id) != self.store.active_id:
             return
         if kind == 'session_error':
             # Raw Input removal notifications can arrive after the HID error.
@@ -1160,6 +1167,15 @@ class MainWindow(QMainWindow):
                 return
             if 'dpi' not in self.profile_sensitivity(data['device_id']):
                 self.save_profile_sensitivity(data['device_id'], dpi=data['current'])
+        if kind == 'ready' and data.get('polling'):
+            saved_rate = self.profile_sensitivity(data['device_id']).get('polling_hz')
+            if saved_rate is None:
+                self.save_profile_sensitivity(data['device_id'], polling_hz=data['polling']['current'])
+            elif saved_rate != data['polling']['current']:
+                try:
+                    self.g502.set_polling(saved_rate, profile_id=self.store.active_id)
+                except (ValueError, OSError) as error:
+                    self.status('No se pudo recuperar la frecuencia guardada: ' + str(error))
         if kind == 'ready' and data.get('dpi'):
             state = data['dpi']
             saved = self.profile_sensitivity(data['device_id'])
@@ -1404,6 +1420,9 @@ class MainWindow(QMainWindow):
             snapshot = {name: getattr(session, name, None) for name in
                         ('original_mode', 'original_map', 'original_dpi', 'changed_mode', 'changed_map', 'changed_dpi')}
             snapshot['device_id'] = session.device.id
+            polling = getattr(session, 'polling', None)
+            if polling:
+                snapshot['polling'] = dict(original_interval=polling.original, dirty=polling.dirty)
             try:
                 (self.store.directory / 'g502-restoration-pending.json').write_text(
                     json.dumps(snapshot, indent=2), encoding='utf-8')

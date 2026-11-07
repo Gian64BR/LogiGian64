@@ -1,10 +1,9 @@
-LogiGian64 0.2.23 — Creación de macros y tarjetas de perfiles.
+LogiGian64 0.2.26 — Retardos manuales en cualquier posición.
 
-- Crear macro abre directamente la selección del tipo, sin pedir el nombre en una ventana separada.
-- Nombre editable en la parte superior, con numeración automática que evita nombres Macro N ya existentes en el perfil.
-- Iconos de tipos compartidos con el editor para mantener el mismo diseño.
-- Perfiles en tarjetas turquesa, organizadas automáticamente en filas según el ancho de la ventana, con indicador de perfil en uso y acciones de renombrar y eliminar.
-- Se conservan las funciones anteriores, los perfiles y la configuración RGB.
+- Añadir Retardo coloca el nuevo paso al final, incluso si hay otro paso seleccionado o la macro está vacía.
+- Los retardos se pueden arrastrar al inicio, entre acciones o al final, conservando su posición al guardar y reabrir.
+- Los retardos manuales se conservan al borrar otras acciones. Los intervalos estándar siguen calculándose entre las acciones existentes.
+- Añadir un retardo manual pasa a tiempos manuales para permitir su colocación libre.
+- Se mantienen las correcciones anteriores de tabla cerrada, posición de la vista y frecuencias del G502.
 
-138 pruebas automatizadas aprobadas. Instalador local para revisión; no publicado en GitHub.
-Cierra LogiGian64 antes de instalar.
+151 pruebas automatizadas aprobadas. Instalador local para probar; no publicado en GitHub.

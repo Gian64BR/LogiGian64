@@ -5,7 +5,7 @@ import tempfile
 import threading
 import unittest
 from unittest.mock import patch
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QPushButton, QComboBox, QSpinBox, QMenu, QDialog
@@ -35,6 +35,140 @@ class MacroEditorTests(unittest.TestCase):
     def blocks(self):
         return [self.window.timeline.itemAt(i).widget() for i in range(self.window.timeline.count())
                 if isinstance(self.window.timeline.itemAt(i).widget(), TimelineBlock)]
+
+    def settle(self):
+        for _ in range(5):
+            self.app.processEvents()
+
+    def load_long_macro(self, mode):
+        actions = [dict(type='text', text=f'K{i}', delay_ms=0, char_delay_ms=0) for i in range(180)]
+        macro = dict(id='long', name='Larga', mode=mode, standard_delay=False, events=actions)
+        if mode == 'sequence':
+            macro.update(events=[], sections=dict(press=actions, hold=actions, release=actions))
+        self.window.store.active['macros'] = [macro]
+        self.window.load_macro(0)
+        self.window.stack.setCurrentIndex(4)
+        self.window.resize(1100, 700)
+        self.window.show()
+        self.settle()
+
+    def test_table_opens_only_on_request_and_reopening_starts_at_top(self):
+        for mode in ('once', 'sequence'):
+            with self.subTest(mode=mode):
+                self.load_long_macro(mode)
+                self.assertTrue(self.window.table.isHidden())
+                self.window.select_step(0)
+                self.assertTrue(self.window.table.isHidden())
+                self.window.toggle_table()
+                self.assertFalse(self.window.table.isHidden())
+                self.window.select_step(1)
+                self.assertFalse(self.window.table.isHidden())
+                bar = self.window.timeline_scroll.verticalScrollBar()
+                bar.setValue(bar.maximum())
+                self.assertGreater(bar.value(), 0)
+                self.window.load_macro(0)
+                self.settle()
+                self.assertTrue(self.window.table.isHidden())
+                self.assertEqual(bar.value(), 0)
+
+    def test_delete_visible_chip_keeps_scroll_and_supports_repeated_delete(self):
+        for mode, phase in (('once', None), ('sequence', 'press'), ('sequence', 'hold'), ('sequence', 'release')):
+            with self.subTest(mode=mode, phase=phase):
+                self.load_long_macro(mode)
+                scroll = self.window.timeline_scroll
+                layout = self.window.phase_layouts[phase] if phase else self.window.single_timeline
+                track = self.window.phase_tracks[phase] if phase else self.window.single_timeline_content
+                scroll.verticalScrollBar().setValue(track.mapTo(self.window.timeline_wrapper, QPoint(0,0)).y()+200)
+                self.settle()
+                before = scroll.verticalScrollBar().value()
+                chips = [layout.itemAt(i).widget() for i in range(layout.count()) if isinstance(layout.itemAt(i).widget(), TimelineBlock)]
+                chip = next(c for c in chips if 10 < c.mapTo(scroll.viewport(), c.rect().center()).y() < scroll.viewport().height()-10)
+                QTest.mouseClick(chip, Qt.MouseButton.LeftButton)
+                self.settle()
+                self.assertTrue(self.window.table.isHidden())
+                self.assertEqual(scroll.verticalScrollBar().value(), before)
+                QTest.keyClick(QApplication.focusWidget(), Qt.Key.Key_Delete)
+                self.settle()
+                self.assertEqual(len(self.window.draft), 179)
+                self.assertEqual(scroll.verticalScrollBar().value(), before)
+                QTest.keyClick(scroll, Qt.Key.Key_Delete)
+                self.settle()
+                self.assertEqual(len(self.window.draft), 178)
+                self.assertEqual(scroll.verticalScrollBar().value(), before)
+
+    def test_deleted_accidental_keys_leave_only_gaps_between_surviving_actions(self):
+        for mode in ('once', 'sequence'):
+            with self.subTest(mode=mode):
+                actions = [dict(type='key', vk=vk, down=down, delay_ms=0)
+                           for vk in (65, 66, 67) for down in (True, False)]
+                macro = dict(id='gaps', name='Retardos', mode=mode, standard_delay=True, standard_delay_ms=50, events=actions)
+                if mode == 'sequence':
+                    macro.update(events=[], sections=dict(press=[], hold=actions, release=[]))
+                self.window.store.active['macros'] = [macro]
+                self.window.load_macro(0)
+                if mode == 'sequence':
+                    self.window.select_phase('hold')
+                for _ in range(2):
+                    row = next(i for i,e in enumerate(self.window.draft) if e.get('vk') == 66)
+                    self.window.delete_timeline_step(row)
+                self.window.standard_delay.setChecked(False)
+                self.assertEqual([e['type'] for e in self.window.draft], ['key','wait','key','wait','key','wait','key'])
+                self.assertEqual([e['delay_ms'] for e in self.window.draft if e['type']=='wait'], [50,50,50])
+                self.assertEqual([e['vk'] for e in self.window.draft if e['type']=='key'], [65,65,67,67])
+
+    def test_deleting_all_standard_actions_removes_all_generated_waits(self):
+        self.window.standard_delay.setChecked(True)
+        while self.window.draft:
+            self.window.delete_timeline_step(0)
+        self.window.standard_delay.setChecked(False)
+        self.assertEqual(self.window.draft, [])
+
+    def test_added_manual_delay_is_last_and_switches_off_standard_timing(self):
+        self.window.standard_delay.setChecked(True)
+        self.window.select_step(0)
+        self.window.append_actions([dict(type='wait', delay_ms=123)])
+        self.assertFalse(self.window.standard_delay.isChecked())
+        self.assertEqual(self.window.draft[-1], dict(type='wait', delay_ms=123, manual=True))
+        self.assertTrue(self.window.table.isHidden())
+
+    def test_manual_delay_can_move_to_any_position_in_each_sequence_phase(self):
+        actions = [dict(type='text', text='A', delay_ms=0), dict(type='text', text='B', delay_ms=0)]
+        self.window.store.active['macros'] = [dict(id='positions', name='Posiciones', mode='sequence',
+            standard_delay=False, events=[], sections=dict(press=actions, hold=actions, release=actions))]
+        self.window.load_macro(0)
+        for phase in ('press', 'hold', 'release'):
+            self.window.select_phase(phase)
+            self.window.append_actions([dict(type='wait', delay_ms=123)])
+            self.assertEqual(self.window.draft[-1]['type'], 'wait')
+            self.window.reorder_timeline(2, 0)
+            self.assertEqual(self.window.draft[0]['type'], 'wait')
+            self.window.reorder_timeline(0, 2)
+            self.assertEqual(self.window.draft[1]['type'], 'wait')
+            self.window.reorder_timeline(1, 3)
+            self.assertEqual(self.window.draft[-1]['type'], 'wait')
+        self.assertTrue(self.window.commit_draft())
+        self.window.load_macro(0)
+        for events in self.window.read_sections().values():
+            self.assertEqual([e.get('text') for e in events if e['type']=='text'], ['A','B'])
+            self.assertEqual(events[-1], dict(type='wait', delay_ms=123, manual=True))
+
+    def test_explicit_edge_delays_survive_action_deletion_and_reload(self):
+        self.window.draft = [dict(type='text', text='A', delay_ms=0), dict(type='text', text='B', delay_ms=0)]
+        self.window.render_events()
+        self.window.append_actions([dict(type='wait', delay_ms=100)])
+        self.window.reorder_timeline(2, 0)
+        self.window.append_actions([dict(type='wait', delay_ms=200)])
+        self.window.delete_timeline_step(1)
+        self.assertTrue(self.window.commit_draft())
+        self.window.load_macro(0)
+        self.assertEqual([e['type'] for e in self.window.draft], ['wait','text','wait'])
+        self.assertEqual([e['delay_ms'] for e in self.window.draft], [100,0,200])
+
+    def test_delay_can_be_added_to_an_empty_macro(self):
+        self.window.draft = []
+        self.window.render_events()
+        self.window.append_actions([dict(type='wait', delay_ms=250)])
+        self.assertEqual(self.window.draft, [dict(type='wait', delay_ms=250, manual=True)])
 
     def test_custom_table_has_press_delay_release_and_standard_updates_gap(self):
         self.assertEqual([event['type'] for event in self.window.draft], ['key','wait','key'])

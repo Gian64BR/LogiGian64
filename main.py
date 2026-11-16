@@ -14,9 +14,10 @@ def main():
     parser.add_argument("--screenshots", type=Path)
     parser.add_argument("--data-dir", type=Path)
     args = parser.parse_args()
+    from nexus import __version__
     from nexus import windows as win
     if args.diagnose:
-        result = {"version": "0.2.28", "devices": [d.to_dict() for d in win.enumerate_devices()],
+        result = {"version": __version__, "devices": [d.to_dict() for d in win.enumerate_devices()],
                   "pointer_speed": win.pointer_speed(), "hardware_plugins": ["G502 HERO host buttons (explicit activation)"], "macro_engine": "Windows Raw Input + SendInput + HID++ button stream",
                   "excluded_virtual_devices": [d.to_dict() for d in win.enumerate_devices(include_virtual=True) if d.virtual]}
         print(json.dumps(result, ensure_ascii=False, indent=2))

@@ -1,3 +1,9 @@
+# Publicación conjunta 0.3.1
+
+Windows y Linux comparten el número 0.3.1 y una única Release. Se recompilan
+los dos ejecutables; las funciones y el diseño se mantienen. Los resultados de
+las pruebas de la edición anterior se conservan debajo como historial.
+
 # Verificacion local de LogiGian64 0.2.28
 
 Preparación de publicación del 15 de noviembre de 2026: se repitieron las 158

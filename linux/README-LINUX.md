@@ -1,4 +1,4 @@
-# LogiGian64 Linux — 0.3.0-linux.1 (versión de prueba)
+# LogiGian64 Linux — 0.3.1 (versión de prueba)
 
 La edición Windows no se modifica. Esta edición conserva la interfaz, los perfiles,
 el editor y el motor de macros; reemplaza la entrada nativa por evdev/uinput y adapta
@@ -10,7 +10,7 @@ Paquete amd64 compilado en Ubuntu 24.04: Ubuntu 24.04, Linux Mint 22 y sistemas
 compatibles con glibc 2.39 o posterior. No sirve para ARM ni para Debian 12.
 
 ```sh
-sudo apt install ./LogiGian64-0.3.0-linux.1-amd64.deb
+sudo apt install ./LogiGian64-0.3.1-amd64.deb
 sudo bash /opt/logigian64-linux/tools/enable-device-access.sh "$USER"
 ```
 
@@ -25,7 +25,7 @@ Usa el archivo source.tar.gz para instalar con el Python del sistema (3.10 o pos
 
 ```sh
 sudo apt install python3-venv python3-dev gcc linux-libc-dev libudev1 libegl1 libopengl0 libxkbcommon0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libdbus-1-3 libglib2.0-0 libfontconfig1 libgl1 udev
-tar -xzf LogiGian64-0.3.0-linux.1-source.tar.gz
+tar -xzf LogiGian64-0.3.1-Linux-source.tar.gz
 cd LogiGian64-linux
 bash install.sh
 sudo bash "${XDG_DATA_HOME:-$HOME/.local/share}/logigian64-app/tools/enable-device-access.sh" "$USER"

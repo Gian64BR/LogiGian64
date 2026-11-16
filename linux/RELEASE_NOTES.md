@@ -1,26 +1,48 @@
-# LogiGian64 0.3.0-linux.1 — primera versión Linux de prueba
+# LogiGian64 0.3.1 — Windows y Linux
 
-La interfaz, los perfiles y el editor de macros conservan el diseño de Windows.
-La entrada nativa usa evdev/uinput y el control HID++ del G502 se identifica por
-su dispositivo físico en Linux. Windows mantiene la versión 0.2.28.
+Una sola versión y una sola Release para las dos plataformas. Las próximas
+actualizaciones de LogiGian64 mantendrán este formato conjunto.
 
-- `.deb` amd64 para Ubuntu 24.04/Mint 22; requiere glibc 2.39 o posterior.
-- Instalación desde fuentes para Debian y versiones anteriores con Python 3.10+.
-- Perfiles y arranque automático mediante rutas XDG.
-- Permisos mediante grupo dedicado; la interfaz no necesita ejecutarse como root.
-- Inicio minimizado cuando el escritorio no ofrece bandeja; opción Salir en Ajustes.
+## Lo realizado
 
-**Instalación y permisos:** consulta README-LINUX.md dentro del archivo de fuentes,
-o [la guía del repositorio](https://github.com/Gian64BR/LogiGian64/blob/main/linux/README-LINUX.md).
+- **Windows:** detección separada de teclado y mouse en receptores inalámbricos
+  compartidos, conservando la identidad del G502. Identificación local del Havit
+  KB830WB con su imagen y teclas alineadas; el mouse del receptor aparece al detectar
+  actividad real. Los teclados desconocidos utilizan la fotografía genérica indicada.
+- **Linux (versión de prueba):** se conserva el diseño, los perfiles y el editor.
+  Entrada nativa con evdev/uinput, identificación HID++ del G502, perfiles y arranque
+  en rutas XDG, permisos por grupo y salida accesible en escritorios sin bandeja.
+- **Publicaciones:** numeración compartida 0.3.1 en los dos ejecutables e instaladores,
+  paquetes de ambas plataformas reunidos y un solo archivo de sumas SHA256.
 
-**Validación:** 89 pruebas automatizadas aprobadas en Ubuntu 24.04 bajo WSL;
-paquete compilado abierto y cerrado, inicio automático y SIGTERM comprobados.
-Prueba real uinput → evdev con F24 pulsada y liberada, sin capturar la propia entrada virtual.
+## Qué descargar
 
-**Limitaciones de esta prueba:** falta validar el G502 físico en Linux (botones,
-DPI, frecuencia y RGB). El texto automático admite ASCII con distribución US;
-Unicode y otras distribuciones de teclado quedan pendientes. La velocidad global
-del puntero se configura en el escritorio. Debian y otras versiones requieren
-pruebas en un escritorio real. No es una versión para macOS.
+| Sistema | Archivo |
+|---|---|
+| Windows 10/11 x64 | `LogiGian64-Setup.exe` |
+| Windows portable | `LogiGian64-0.3.1-Windows-x64.zip` |
+| Ubuntu 24.04 / Linux Mint 22, amd64 | `LogiGian64-0.3.1-amd64.deb` |
+| Debian y otras versiones de Linux | `LogiGian64-0.3.1-Linux-source.tar.gz` |
 
-Se adjuntan las fuentes, las capturas del ejecutable y las sumas SHA256.
+También se incluyen las fuentes de Windows, los manifiestos de ambas plataformas
+y un único `SHA256SUMS.txt`. Las fuentes completas de ambas plataformas están en
+la etiqueta Git `v0.3.1`.
+
+## Instalación de Linux y alcance
+
+Consulta [la guía de Linux](https://github.com/Gian64BR/LogiGian64/blob/v0.3.1/linux/README-LINUX.md)
+para instalar y habilitar los permisos como usuario normal. El `.deb` requiere
+amd64 y glibc 2.39 o posterior; para otras versiones se ofrece la instalación desde fuentes.
+
+Windows mantiene las funciones y el diseño probados. Linux continúa en prueba:
+falta validar el G502 físico (botones, DPI, frecuencia y RGB); el texto automático
+admite ASCII con distribución US, con Unicode y otras distribuciones pendientes.
+La velocidad global del puntero se configura en el escritorio Linux. Debian y
+otras versiones necesitan validación en un escritorio real.
+
+Validación: 158 pruebas de Windows y 89 de Linux; apertura y cierre de paquetes,
+inicio automático y liberación del bloqueo comprobados en Linux bajo Ubuntu/WSL.
+La entrada virtual se comprobó mediante una pulsación y liberación F24 recibida
+por el kernel, sin capturar la propia entrada virtual.
+
+macOS queda para una actualización posterior.

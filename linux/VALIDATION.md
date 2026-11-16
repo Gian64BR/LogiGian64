@@ -1,3 +1,9 @@
+# Linux 0.3.1 — publicación conjunta
+
+Windows y Linux comparten el número 0.3.1 y una única Release. Se recompilan
+los dos ejecutables; las funciones y el diseño se mantienen. Los resultados de
+las pruebas de la edición anterior se conservan debajo como historial.
+
 # Linux 0.3.0-linux.1 — validación
 
 - Ubuntu 24.04 amd64 bajo WSL, Python 3.12.

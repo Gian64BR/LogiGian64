@@ -1,4 +1,4 @@
-# LogiGian64 0.2.28 — Macros y asignaciones
+# LogiGian64 0.3.1 — Macros y asignaciones
 
 Aplicación independiente para Windows 10/11 x64, con un espacio de trabajo negro,
 panel lateral y asignación de macros sobre la imagen del periférico.
@@ -12,12 +12,16 @@ No requiere instalar Python en el equipo de destino.
 
 ## Linux (versión de prueba)
 
-La edición Linux **0.3.0-linux.1** se publica por separado como prerelease:
-[descargas para Linux](https://github.com/Gian64BR/LogiGian64/releases/tag/v0.3.0-linux.1).
-Incluye un `.deb` x64 para Ubuntu 24.04/Mint 22 y una instalación desde fuentes
-para Debian y otras versiones. Consulta [instalación, permisos y limitaciones](linux/README-LINUX.md).
-El código Linux está en `linux/`; la aplicación Windows conserva su código y su instalador.
+Windows y Linux comparten la versión **0.3.1** y se distribuyen en
+[una sola Release](https://github.com/Gian64BR/LogiGian64/releases/latest).
+Descarga el `.exe` para Windows, el `.deb` x64 para Ubuntu 24.04/Mint 22 o el
+archivo `Linux-source.tar.gz` para instalar desde fuentes en Debian y otras versiones.
+Consulta [instalación, permisos y limitaciones de Linux](linux/README-LINUX.md).
+El código Linux está en `linux/`; Windows conserva su implementación nativa.
 macOS todavía no está implementado.
+
+Las próximas actualizaciones mantendrán una versión y una Release para ambas
+plataformas. Consulta [cómo preparar una publicación conjunta](RELEASING.md).
 
 Versión de prueba para Windows 10/11 x64. El instalador no tiene firma digital;
 Windows puede mostrar un aviso de editor desconocido. Comprueba los archivos con

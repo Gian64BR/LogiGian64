@@ -39,7 +39,7 @@ class KeyboardMacroTests(unittest.TestCase):
         self.assertEqual(art.source_rect().width(), 1396)
         other = keyboard()
         other.name = 'Teclado USB · 0C45:5004'
-        self.assertIsNone(reference_image(other))
+        self.assertEqual(reference_image(other).name, 'generic-keyboard.png')
         other.name = 'Red Dragon K552RGB-1'
         self.assertEqual(reference_image(other), path)
         art.close()

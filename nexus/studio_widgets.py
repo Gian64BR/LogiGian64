@@ -2,10 +2,12 @@
 import json
 import sys
 import math
+from collections import deque
+from functools import lru_cache
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal, QRectF, QPointF, QMimeData, QPoint, QSize, QEvent
-from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QDrag, QPainterPath, QIcon, QRegion, QFont
+from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QDrag, QPainterPath, QIcon, QRegion, QFont, QImage
 from PySide6.QtWidgets import (QWidget, QListWidget, QFrame, QLabel, QVBoxLayout, QHBoxLayout,
                               QPushButton, QDialog, QDialogButtonBox, QComboBox,
                               QStyledItemDelegate, QStyleOptionViewItem, QStyle, QLineEdit)
@@ -155,10 +157,16 @@ class ProfileCard(QFrame):
 
 
 def reference_image(device, side=False):
-    from .keyboard_support import is_kumara
+    from .keyboard_support import is_kumara, is_havit_kb830wb
+    if is_havit_kb830wb(device):
+        root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent.parent))
+        return root / 'assets' / 'havit-kb830wb.png'
     if is_kumara(device):
         root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent.parent))
         return root / 'assets' / 'redragon-kumara-k552rgb-1.jpg'
+    if device.kind == 'keyboard':
+        root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent.parent))
+        return root / 'assets' / 'generic-keyboard.png'
     if device.kind == "mouse" and (device.vid, device.pid) == ("30FA", "0400"):
         root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
         return root / "assets" / ("knup-kpv84-side.png" if side else "knup-kpv84-top.png")
@@ -181,6 +189,56 @@ def reference_image(device, side=False):
     return root / 'assets' / ('g502-hero-side.png' if side else 'g502-hero-top.png')
 
 
+@lru_cache(maxsize=1)
+def generic_keyboard_picture(path):
+    return keyboard_photo(path, (120, 420, 960, 360), 160)
+
+
+@lru_cache(maxsize=4)
+def keyboard_photo(path, bounds, threshold):
+    """Display the supplied photo without changing its source or key legends."""
+    photo = QImage(path).copy(*bounds).convertToFormat(QImage.Format.Format_RGBA8888)
+    if photo.isNull():
+        return QPixmap()
+    if threshold is None:
+        # The Havit body is white too: preserve it rather than treating its
+        # white chassis as connected background.
+        picture = QPixmap(photo.size())
+        picture.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(picture)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        outline = QPainterPath()
+        outline.addRoundedRect(QRectF(picture.rect()), 10, 10)
+        painter.setClipPath(outline)
+        painter.drawImage(0, 0, photo)
+        painter.end()
+        return picture
+    width, height, stride = photo.width(), photo.height(), photo.bytesPerLine()
+    pixels = bytearray(photo.constBits())
+    seen = bytearray(width * height)
+    edge = deque([(x, 0) for x in range(width)] + [(x, height-1) for x in range(width)] +
+                 [(0, y) for y in range(height)] + [(width-1, y) for y in range(height)])
+    while edge:
+        x, y = edge.popleft()
+        position = y * width + x
+        if seen[position]:
+            continue
+        seen[position] = 1
+        offset = y * stride + x * 4
+        if min(pixels[offset:offset+3]) <= threshold:
+            continue
+        pixels[offset+3] = 0
+        if x:
+            edge.append((x-1, y))
+        if x+1 < width:
+            edge.append((x+1, y))
+        if y:
+            edge.append((x, y-1))
+        if y+1 < height:
+            edge.append((x, y+1))
+    return QPixmap.fromImage(QImage(pixels, width, height, stride, QImage.Format.Format_RGBA8888).copy())
+
+
 class HardwareArt(DeviceArt):
     def __init__(self, device, side=False):
         super().__init__(device.kind, "#00b7ed")
@@ -193,6 +251,12 @@ class HardwareArt(DeviceArt):
         path = reference_image(self.device, self.side)
         self.bundled_g502 = bool(path and path.name in ('g502-hero-top.png', 'g502-hero-side.png'))
         self.picture = QPixmap(str(path)) if path else QPixmap()
+        if path and path.name == 'generic-keyboard.png' and not self.picture.isNull():
+            # Keep the supplied photograph unchanged on disk; omit its white
+            # backdrop when presenting it in the black workspace.
+            self.picture = generic_keyboard_picture(str(path))
+        elif path and path.name == 'havit-kb830wb.png' and not self.picture.isNull():
+            self.picture = keyboard_photo(str(path), (28, 318, 1020, 347), None)
         if self.picture.isNull() and (self.device.vid, self.device.pid) == ('046D', 'C08B'):
             root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent.parent))
             path = root / 'assets' / ('g502-hero-side.png' if self.side else 'g502-hero-top.png')
@@ -211,6 +275,8 @@ class HardwareArt(DeviceArt):
         if is_kumara(self.device) and not self.picture.isNull():
             # Frame the original photograph in the view without editing it.
             return QRectF(52, 78 if self.picture.height() < 1000 else 365, 1396, 498)
+        if self.device.kind == 'keyboard' and not self.picture.isNull():
+            return QRectF(self.picture.rect())
         if self.device.kind == 'mouse' and (self.device.vid, self.device.pid) not in [('046D', 'C08B'), ('30FA', '0400')] and not self.picture.isNull():
             return self.content_rect
         return QRectF(self.picture.rect())
@@ -577,7 +643,7 @@ class AssignmentCanvas(QWidget):
             return
         w, h = self.width(), self.height()
         if self.device.kind == "keyboard":
-            from .keyboard_support import is_kumara
+            from .keyboard_support import is_kumara, is_havit_kb830wb
             width = w * .94
             height = min(h * .56, width / 2.80)
             self.art.setGeometry(int((w - width) / 2), int((h - height) / 2), int(width), int(height))
@@ -587,9 +653,16 @@ class AssignmentCanvas(QWidget):
                 self.points = {f'F{i + 1}': QPointF(rect.x() + (x - 52) / 1396 * rect.width(),
                                                  rect.y() + 43 / 498 * rect.height())
                                for i, x in enumerate(positions)}
+            elif is_havit_kb830wb(self.device):
+                positions = [138, 188, 238, 287, 338, 387, 438, 487, 535, 585, 636, 685]
+                self.points = {f'F{i + 1}': QPointF(rect.x() + (x - 28) / 1020 * rect.width(),
+                                                  rect.y() + 62 / 347 * rect.height())
+                               for i, x in enumerate(positions)}
             else:
-                self.points = {f'F{i + 1}': QPointF(rect.x() + (.10 + i * .065) * rect.width(),
-                                                  rect.y() + .13 * rect.height()) for i in range(12)}
+                positions = [237, 278, 319, 360, 426, 467, 508, 549, 608, 650, 691, 733]
+                self.points = {f'F{i + 1}': QPointF(rect.x() + (x - 120) / 960 * rect.width(),
+                                                  rect.y() + 97 / 360 * rect.height())
+                               for i, x in enumerate(positions)}
         else:
             height = min(410, h * .72)
             knup = (self.device.vid, self.device.pid) == ("30FA", "0400")
@@ -708,10 +781,12 @@ class TargetsOverlay(QWidget):
             self.canvas.label_rects = {}
             font = p.font()
             font.setBold(True)
-            font.setPixelSize(12)
+            key_width = min(28, max(16, abs(self.canvas.points['F2'].x() - self.canvas.points['F1'].x()) * .82))
+            key_height = min(26, max(16, key_width * .93))
+            font.setPixelSize(min(12, max(9, round(key_width * .43))))
             p.setFont(font)
             for slot, pos in self.canvas.points.items():
-                rect = QRectF(pos.x() - 14, pos.y() - 13, 28, 26)
+                rect = QRectF(pos.x() - key_width / 2, pos.y() - key_height / 2, key_width, key_height)
                 self.canvas.label_rects[slot] = rect
                 assigned = slot in self.canvas.names
                 selected = slot == self.canvas.selected

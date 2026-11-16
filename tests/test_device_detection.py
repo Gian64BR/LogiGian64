@@ -17,6 +17,34 @@ def keyboard(identity='unit-a'):
 
 
 class DeviceDetectionTests(unittest.TestCase):
+    def test_unknown_keyboards_use_supplied_photo_and_function_keys_follow_its_groups(self):
+        from nexus.studio_widgets import HardwareArt, AssignmentCanvas, reference_image
+        app = QApplication.instance() or QApplication([])
+        for vid, pid, name in [('04D9', '1702', 'Teclado USB'), ('FFFF', '1234', 'USB DEVICE'), ('', '', 'Teclado genérico')]:
+            device = win.Device(vid+pid, name, 'keyboard', 'Generic', vid, pid, [], [])
+            self.assertEqual(Path(reference_image(device)).name, 'generic-keyboard.png')
+            art = HardwareArt(device)
+            self.assertFalse(art.picture.isNull())
+            self.assertGreater(art.source_rect().width(), art.source_rect().height())
+            art.deleteLater()
+            canvas = AssignmentCanvas()
+            try:
+                for width in (580, 1100, 1500):
+                    canvas.resize(width, 540)
+                    canvas.configure(device)
+                    points = [canvas.points[f'F{i}'] for i in range(1, 13)]
+                    self.assertEqual(len({round(p.y(), 3) for p in points}), 1)
+                    self.assertTrue(all(a.x() < b.x() for a,b in zip(points,points[1:])))
+                    self.assertGreater(points[4].x()-points[3].x(), points[1].x()-points[0].x())
+                    self.assertGreater(points[8].x()-points[7].x(), points[1].x()-points[0].x())
+                    fitted = canvas.art.fitted_rect().translated(canvas.art.pos())
+                    for point in points:
+                        self.assertTrue(fitted.contains(point))
+                    canvas.overlay.grab()
+                    self.assertEqual(set(canvas.label_rects), {f'F{i}' for i in range(1,13)})
+            finally:
+                canvas.deleteLater()
+
     def test_assignment_sidebar_preserves_readable_lists_and_scrolls_on_laptops(self):
         app = QApplication.instance() or QApplication([])
         from PySide6.QtGui import QFontDatabase, QFont

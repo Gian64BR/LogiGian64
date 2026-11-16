@@ -1,0 +1,9 @@
+*.py text eol=lf whitespace=-blank-at-eof
+*.sh text eol=lf
+*.spec text eol=lf
+*.yml text eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+linux/licenses/* -whitespace
+linux/tools/prerm text eol=lf

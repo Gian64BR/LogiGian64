@@ -1,0 +1,444 @@
+"""G502 HERO volatile host control through HID++ 0x8100 / 0x8110.
+
+No flash or onboard profile writes. Maps and mode are snapshotted and restored.
+Only activated by an explicit user action and only while Otro controlador HID's agent is absent.
+"""
+from __future__ import annotations
+
+import queue
+import subprocess
+import sys
+from pathlib import Path
+import threading
+import time
+import hashlib
+import logging
+
+try:
+    import hid
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "vendor"))
+    import hid
+
+
+def ghub_running():
+    from .linux_backend import active_hid_controllers
+    return bool(active_hid_controllers())
+
+
+def close_ghub():
+    raise OSError('Cierra manualmente Solaar, ratbagd u OpenRGB. LogiGian64 no detiene otros controladores ni servicios.')
+
+
+def decode_buttons(report, feature_index, previous, count):
+    if len(report) < 6 or report[0] != 0x11 or report[1] != 255 or report[2] != feature_index or report[3] != 0:
+        return previous, []
+    mask = ((report[4] << 8) | report[5]) & ((1 << count) - 1)
+    changed = mask ^ previous
+    return mask, [{"type": "gbutton", "button": bit, "down": bool(mask & (1 << bit))}
+                  for bit in range(count) if changed & (1 << bit)]
+
+
+def matches_device(item, device):
+    from .linux_backend import container_id
+    path = item["path"].decode("utf-8") if isinstance(item["path"], bytes) else item["path"]
+    identity = hashlib.sha256(container_id(path).upper().encode()).hexdigest()[:24]
+    return identity == device.id
+
+
+class G502Session:
+    def __init__(self, device, on_event, on_status, on_error, on_hardware=None):
+        self.device = device
+        self.handle = -int(device.id[:12], 16)
+        self.on_event, self.on_status, self.on_error = on_event, on_status, on_error
+        self.on_hardware = on_hardware or (lambda data: None)
+        self.dpi_index = 0
+        self.dpi_state = None
+        self.original_dpi = None
+        self.changed_dpi = False
+        self.polling = None
+        self.lighting = None
+        self.lighting_error = None
+        self.commands = queue.Queue()
+        self.stop_requested = threading.Event()
+        self.thread = None
+        self.ready = False
+        self.needs_restore = False
+        self.channel = None
+        self.spy = self.profiles = 0
+        self.count = 0
+        self.original_mode = None
+        self.original_map = None
+        self.changed_mode = False
+        self.started_spy = False
+        self.changed_map = False
+        self.previous = 0
+        self.request_id = 0
+        self.monitor_error = None
+        self.device_removed = threading.Event()
+
+    def mark_removed(self):
+        self.device_removed.set()
+        self.stop_requested.set()
+
+    def abandon_removed(self):
+        """A new USB connection has a new transport; never restore via the old one."""
+        self.needs_restore = False
+        self.discard()
+
+    def _monitor(self):
+        while not self.stop_requested.wait(4):
+            try:
+                conflict = ghub_running()
+                reason = "Otro controlador HID volvió a abrirse. Se detuvo el control directo para evitar dos controladores simultáneos."
+            except OSError as error:
+                conflict, reason = True, str(error)
+            if conflict and not self.stop_requested.is_set():
+                self.monitor_error = reason
+                self.stop_requested.set()
+                return
+
+    def start(self, buttons=()):
+        self.thread = threading.Thread(target=self._run, args=(set(buttons),), daemon=True, name="G502HID")
+        self.thread.start()
+
+    def update_buttons(self, buttons):
+        self.commands.put(("buttons", set(buttons)))
+
+    def set_lighting(self, configurations):
+        from .lighting_protocol import clean_lighting
+        if not self.ready or not self.lighting:
+            raise OSError('Activa el control del G502 antes de cambiar la iluminación.')
+        self.commands.put(('lighting', {z: clean_lighting(c) for z, c in configurations.items()}))
+
+    def restore_lighting(self):
+        self.commands.put(('lighting_restore', None))
+
+    def set_dpi(self, value, profile_id=None):
+        if not self.ready or not self.dpi_state:
+            raise OSError("Activa el control directo del G502 antes de cambiar el DPI.")
+        self.validate_dpi(value)
+        self.commands.put(("dpi", (value, profile_id)))
+
+    def set_polling(self, hz, profile_id=None):
+        if not self.ready or not self.polling:
+            raise OSError('Control de frecuencia no disponible.')
+        self.polling.validate(hz)
+        self.commands.put(('polling', (hz, profile_id)))
+
+    def validate_dpi(self, value):
+        state = self.dpi_state
+        if type(value) is not int or not state or not state['minimum'] <= value <= state['maximum']:
+            raise ValueError("DPI fuera del rango admitido por el sensor.")
+        if state['step']:
+            if (value - state['minimum']) % state['step']:
+                raise ValueError(f"El sensor requiere pasos de {state['step']} DPI.")
+        elif value not in state['values']:
+            raise ValueError("El sensor no admite ese valor DPI.")
+
+    def _read_dpi(self):
+        data = self.request(self.dpi_index, 2, [0])
+        if len(data) < 5 or data[0] != 0:
+            raise OSError("Respuesta DPI del sensor incompleta.")
+        return (data[1] << 8) | data[2]
+
+    def _load_dpi(self):
+        self.dpi_index = self.feature(0x2201)
+        if self.request(self.dpi_index, 0)[0] < 1:
+            raise OSError("El G502 no comunicó un sensor DPI.")
+        data = self.request(self.dpi_index, 1, [0])
+        if len(data) < 3 or data[0] != 0:
+            raise OSError("Lista DPI del sensor incompleta.")
+        values, step = [], 0
+        for i in range(1, len(data) - 1, 2):
+            value = (data[i] << 8) | data[i + 1]
+            if not value:
+                break
+            if value > 0xE000:
+                step = value - 0xE000
+            else:
+                values.append(value)
+        if not values or min(values) < 1:
+            raise OSError("El sensor no comunicó un rango DPI válido.")
+        self.original_dpi = self._read_dpi()
+        self.dpi_state = {'minimum': min(values), 'maximum': max(values), 'step': step,
+                          'values': values, 'current': self.original_dpi}
+
+    def _apply_dpi(self, value, notify=True, profile_id=None):
+        self.validate_dpi(value)
+        self.changed_dpi = True
+        self.request(self.dpi_index, 3, [0, value >> 8, value & 255])
+        current = self._read_dpi()
+        if current != value:
+            raise OSError(f"El sensor confirmó {current} DPI en lugar de {value}.")
+        self.dpi_state['current'] = current
+        if notify:
+            self.on_hardware({'kind': 'dpi', 'device_id': self.device.id, 'profile_id': profile_id, **self.dpi_state})
+
+    def close(self):
+        self.stop_requested.set()
+        if self.thread:
+            self.thread.join(timeout=4)
+        if self.thread and self.thread.is_alive():
+            self.on_error("El G502 aún está restaurando su configuración. Espera antes de cerrar.")
+            return False
+        if self.device_removed.is_set():
+            self.abandon_removed()
+            return True
+        if self.needs_restore:
+            failures = self._restore()
+            self.needs_restore = bool(failures)
+            if failures:
+                self.on_error("No se pudo restaurar todavía: " + "; ".join(failures))
+                return False
+            self.discard()
+        return True
+
+    def discard(self):
+        if self.channel:
+            channel, self.channel = self.channel, None
+            try:
+                channel.close()
+            except OSError:
+                logging.exception('Cierre del transporte HID')
+
+    def _report(self, report):
+        self.previous, events = decode_buttons(report, self.spy, self.previous, self.count)
+        for event in events:
+            self.on_event(self.handle, event)
+
+    def request(self, index, function, data=(), timeout=.65):
+        # Distinct IDs prevent an old delayed reply from satisfying a new request.
+        self.request_id = self.request_id % 7 + 8
+        address = (function << 4) | self.request_id
+        packet = [0x11, 255, index, address] + list(data)
+        packet += [0] * (20 - len(packet))
+        if len(packet) != 20:
+            raise ValueError("Paquete HID++ fuera de rango.")
+        self.channel.write(packet)
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            report = self.channel.read(64, 30)
+            if not report:
+                continue
+            if len(report) >= 4 and report[1:4] == [255, index, address]:
+                return report[4:]
+            if len(report) >= 6 and report[1:5] == [255, 255, index, address]:
+                raise OSError(f"El G502 rechazó la operación HID++ ({report[5]}).")
+            if self.spy:
+                self._report(report)
+        raise TimeoutError("El G502 no confirmó la operación. Comprueba que Otro controlador HID esté cerrado.")
+
+    def feature(self, feature_id):
+        index = self.request(0, 0, [feature_id >> 8, feature_id & 255])[0]
+        if not index:
+            raise OSError(f"El G502 no expone la función {feature_id:04X}.")
+        return index
+
+    def _apply_map(self, buttons):
+        desired = list(self.original_map)
+        desired[:2] = [1, 2]
+        for bit in buttons:
+            if 2 <= bit < self.count:
+                desired[bit] = 0
+        if self.request(self.spy, 3)[:self.count] == desired:
+            return
+        # Mark before sending: a missing acknowledgement can still mean a write.
+        self.changed_map = True
+        self.request(self.spy, 4, desired)
+        if self.request(self.spy, 3)[:self.count] != desired:
+            raise OSError("El G502 no confirmó el mapa temporal de botones.")
+
+    def _restore(self):
+        failures = []
+        if self.device_removed.is_set():
+            return failures
+        if self.lighting:
+            failures.extend(self.lighting.restore())
+        restoring_mode = self.changed_mode
+        for needed, index, fn, data, description in (
+            (self.changed_map, self.spy, 4, self.original_map or [], "mapa de botones"),
+            (self.started_spy, self.spy, 2, [], "captura de botones"),
+            (self.changed_mode, self.profiles, 1, [self.original_mode or 1], "modo del ratón")):
+            if needed:
+                if self.device_removed.is_set():
+                    break
+                if description == "modo del ratón" and failures:
+                    continue
+                try:
+                    self.request(index, fn, data)
+                    if description == "mapa de botones" and self.request(self.spy, 3)[:self.count] != self.original_map:
+                        raise OSError("El mapa original no se confirmó por lectura.")
+                    if description == "modo del ratón" and self.request(self.profiles, 2)[0] != self.original_mode:
+                        raise OSError("El modo original no se confirmó por lectura.")
+                    if description == "mapa de botones":
+                        self.changed_map = False
+                    elif description == "modo del ratón":
+                        self.changed_mode = False
+                    else:
+                        self.started_spy = False
+                except Exception as error:
+                    failures.append(description + ": " + str(error))
+        # Switching modes can itself change the DPI. Verify it only after the
+        # original mode has been restored, otherwise the final sensitivity lies.
+        if not self.device_removed.is_set() and (self.changed_dpi or (restoring_mode and not self.changed_mode and self.original_dpi is not None)):
+            try:
+                value = self.original_dpi
+                if self._read_dpi() != value:
+                    self.request(self.dpi_index, 3, [0, value >> 8, value & 255])
+                if self._read_dpi() != value:
+                    raise OSError("El sensor no confirmó el DPI original.")
+                self.changed_dpi = False
+            except Exception as error:
+                failures.append("DPI original: " + str(error))
+        if self.polling and not self.device_removed.is_set():
+            try:
+                self.polling.restore(after_mode_change=restoring_mode and not self.changed_mode)
+            except (OSError, ValueError) as error:
+                failures.append('Frecuencia original: ' + str(error))
+        return failures
+
+    def _run(self, buttons):
+        problem = None
+        try:
+            if ghub_running():
+                raise OSError("Otro controlador HID está controlando el G502. Cierra Otro controlador HID y su agente antes de activar el control directo en LogiGian64; "
+                              "así no se ejecutarán dos macros para el mismo botón.")
+            info = next((item for item in hid.enumerate(0x046D, 0xC08B)
+                         if ((item.get("usage_page") == 0xFF00 and item.get("usage") == 2) or item.get("interface_number") == 1) and matches_device(item, self.device)), None)
+            if not info:
+                raise OSError("No se encontró la interfaz HID++ del G502 HERO.")
+            self.channel = hid.device()
+            self.channel.open_path(info["path"])
+            self.spy, self.profiles = self.feature(0x8110), self.feature(0x8100)
+            self.count = self.request(self.spy, 0)[0]
+            if not 2 <= self.count <= 16:
+                raise OSError("El número de botones comunicado por el ratón no es válido.")
+            self.original_mode = self.request(self.profiles, 2)[0]
+            if self.original_mode not in (1, 2):
+                raise OSError("El modo actual del ratón es desconocido; no se cambiará.")
+            self.original_map = self.request(self.spy, 3)[:self.count]
+            if len(self.original_map) != self.count:
+                raise OSError("No se pudo guardar el mapa original de botones.")
+            # Even a previously damaged host map must restore usable clicks.
+            self.original_map[:2] = [1, 2]
+            polling_error = None
+            try:
+                from .polling import PollingControl
+                self.polling = PollingControl(self.request, self.feature(0x8060))
+                self.polling.load()
+            except (OSError, ValueError) as error:
+                self.polling = None
+                polling_error = str(error)
+            dpi_error = None
+            try:
+                self._load_dpi()
+            except (OSError, TimeoutError) as error:
+                self.dpi_state = None
+                dpi_error = str(error)
+            try:
+                from .lighting_protocol import LightingControl
+                self.lighting = LightingControl(self.request, self.feature(0x8070))
+                self.lighting.load()
+            except (OSError, ValueError) as error:
+                self.lighting = None
+                self.lighting_error = str(error)
+            if self.original_mode != 2:
+                self.changed_mode = True
+                self.request(self.profiles, 1, [2])
+                if self.request(self.profiles, 2)[0] != 2:
+                    raise OSError("El G502 no confirmó el modo host.")
+            self.started_spy = True
+            self.request(self.spy, 1)
+            self._apply_map(buttons)
+            if self.dpi_state:
+                self.dpi_state['current'] = self._read_dpi()
+                if self.dpi_state['current'] != self.original_dpi:
+                    self._apply_dpi(self.original_dpi, notify=False)
+            if self.polling:
+                self.polling.current = self.polling.read()
+                if self.polling.current != self.polling.original:
+                    self.polling.apply(round(1000 / self.polling.original))
+            self.ready = True
+            self.on_hardware({'kind': 'ready', 'device_id': self.device.id, 'dpi': self.dpi_state, 'dpi_error': dpi_error,
+                              'polling': self.polling.state() if self.polling else None, 'polling_error': polling_error,
+                              'lighting': self.lighting.zones if self.lighting else None, 'lighting_error': self.lighting_error})
+            self.on_status(f"G502 conectado directamente · {self.count} botones físicos · Ctrl+Alt+F12 detiene macros")
+            threading.Thread(target=self._monitor, name="G502Ownership", daemon=True).start()
+            while not self.stop_requested.is_set():
+                try:
+                    command, value = self.commands.get_nowait()
+                    if command == 'buttons':
+                        self._apply_map(value)
+                    elif command == 'polling':
+                        hz, profile_id = value
+                        try:
+                            state = self.polling.apply(hz)
+                            self.on_hardware(dict(kind='polling', device_id=self.device.id, profile_id=profile_id, **state))
+                        except (OSError, ValueError) as error:
+                            self.on_hardware(dict(kind='polling_error', device_id=self.device.id, profile_id=profile_id, error=str(error)))
+                    elif command == 'dpi':
+                        dpi_value, profile_id = value
+                        try:
+                            self._apply_dpi(dpi_value, profile_id=profile_id)
+                        except (OSError, ValueError) as error:
+                            self.on_hardware({'kind': 'dpi_error', 'device_id': self.device.id,
+                                              'profile_id': profile_id, 'error': str(error)})
+                    elif command in ('lighting', 'lighting_restore'):
+                        try:
+                            if not self.lighting:
+                                raise OSError('Control RGB no disponible.')
+                            if command == 'lighting':
+                                self.lighting.apply(value)
+                            else:
+                                failures = self.lighting.restore()
+                                if failures:
+                                    raise OSError('; '.join(failures))
+                            self.on_hardware({'kind': command, 'device_id': self.device.id, 'settings': value})
+                        except (OSError, ValueError) as error:
+                            if self.lighting and command == 'lighting':
+                                failures = self.lighting.restore()
+                                if not failures:
+                                    self.on_hardware({'kind': 'lighting_restore', 'device_id': self.device.id})
+                                else:
+                                    error = OSError(str(error) + '; restauración pendiente: ' + '; '.join(failures))
+                            self.on_hardware({'kind': 'lighting_error', 'device_id': self.device.id, 'error': str(error)})
+                except queue.Empty:
+                    pass
+                report = self.channel.read(64, 50)
+                if report:
+                    self._report(report)
+        except Exception as error:
+            problem = str(error)
+            if self.channel and not self.monitor_error and not self.stop_requested.is_set():
+                try:
+                    present = any(matches_device(item, self.device) for item in hid.enumerate(0x046D, 0xC08B))
+                    if not present:
+                        self.device_removed.set()
+                except Exception:
+                    pass
+        finally:
+            self.stop_requested.set()
+            problem = problem or self.monitor_error
+            self.ready = False
+            self.on_hardware({'kind': 'disconnected', 'device_id': self.device.id})
+            # Deliver releases even after cable loss so a held macro cannot continue.
+            for bit in range(self.count):
+                if self.previous & (1 << bit):
+                    self.on_event(self.handle, {"type": "gbutton", "button": bit, "down": False})
+            if self.channel:
+                failures = self._restore()
+                self.needs_restore = bool(failures)
+                if not failures:
+                    self.discard()
+                if failures:
+                    problem = (problem + "\n" if problem else "") + "Restauración pendiente: " + "; ".join(failures)
+            removed = self.device_removed.is_set()
+            if removed:
+                self.abandon_removed()
+            if problem and not removed:
+                self.on_error(problem)
+            elif not removed:
+                self.on_status("Control directo del G502 desconectado; configuración temporal restaurada.")
+            self.on_hardware({'kind': 'stopped', 'device_id': self.device.id, 'removed': removed,
+                              'needs_restore': self.needs_restore})

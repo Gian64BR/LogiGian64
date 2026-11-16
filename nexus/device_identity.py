@@ -53,7 +53,7 @@ def resolve_identities(devices, identities):
                 device.identification = 'Modelo confirmado y recordado en este equipo'
 
 
-def save_identity(device, manufacturer, model, path=None, remember_ports=True):
+def save_identity(device, manufacturer, model, path=None, remember_ports=True, receiver_keyboard_only=False):
     manufacturer, model = manufacturer.strip(), model.strip()
     if not model or len(model) > 100 or len(manufacturer) > 80 or any(ord(c) < 32 for c in manufacturer + model):
         raise ValueError('Escribe un fabricante y modelo válidos, de hasta 100 caracteres.')
@@ -64,6 +64,8 @@ def save_identity(device, manufacturer, model, path=None, remember_ports=True):
     devices = load_identities(target)
     devices[device.id] = dict(vid=device.vid, pid=device.pid, kind=device.kind,
                               manufacturer=manufacturer, name=name, remember_ports=bool(remember_ports))
+    if receiver_keyboard_only and device.kind == 'keyboard':
+        devices[device.id]['receiver_keyboard_only'] = True
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(target.name + '.' + uuid.uuid4().hex + '.tmp')
     try:

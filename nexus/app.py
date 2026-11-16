@@ -53,7 +53,10 @@ class NativeInput(QAbstractNativeEventFilter):
                 if data:
                     handle, events = data
                     for event in events:
-                        self.events.input.emit(handle, event)
+                        if event['type'] == 'device_activity':
+                            self.events.changed.emit()
+                        else:
+                            self.events.input.emit(handle, event)
             elif msg.message == 0xFE:
                 self.events.changed.emit()
         except Exception as error:

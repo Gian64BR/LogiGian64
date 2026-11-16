@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+# Only this installed executable; do not kill other Python programs or portable copies.
+target=/opt/logigian64-linux/LogiGian64
+matching() {
+    for entry in /proc/[0-9]*/exe; do
+        if [ "$(readlink "$entry" 2>/dev/null || true)" = "$target" ]; then
+            value=${entry#/proc/}; printf '%s\n' "${value%/exe}"
+        fi
+    done
+}
+for pid in $(matching); do kill -TERM "$pid" 2>/dev/null || true; done
+count=0
+while [ "$count" -lt 10 ] && [ -n "$(matching)" ]; do sleep 1; count=$((count+1)); done
+for pid in $(matching); do kill -KILL "$pid" 2>/dev/null || true; done

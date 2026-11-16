@@ -7,3 +7,5 @@ buildcache/
 vendor/
 .venv/
 qa-setup.log
+Probar-correcciones.cmd
+Probar-LogiGian64-local.cmd

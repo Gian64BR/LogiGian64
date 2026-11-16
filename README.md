@@ -1,4 +1,4 @@
-# LogiGian64 0.2.26 — Macros y asignaciones
+# LogiGian64 0.2.28 — Macros y asignaciones
 
 Aplicación independiente para Windows 10/11 x64, con un espacio de trabajo negro,
 panel lateral y asignación de macros sobre la imagen del periférico.
@@ -9,6 +9,15 @@ Descarga **LogiGian64-Setup.exe** desde [Releases](https://github.com/Gian64BR/L
 
 También puedes descargar el ZIP portable, extraerlo y ejecutar `LogiGian64.exe`.
 No requiere instalar Python en el equipo de destino.
+
+## Linux (versión de prueba)
+
+La edición Linux **0.3.0-linux.1** se publica por separado como prerelease:
+[descargas para Linux](https://github.com/Gian64BR/LogiGian64/releases/tag/v0.3.0-linux.1).
+Incluye un `.deb` x64 para Ubuntu 24.04/Mint 22 y una instalación desde fuentes
+para Debian y otras versiones. Consulta [instalación, permisos y limitaciones](linux/README-LINUX.md).
+El código Linux está en `linux/`; la aplicación Windows conserva su código y su instalador.
+macOS todavía no está implementado.
 
 Versión de prueba para Windows 10/11 x64. El instalador no tiene firma digital;
 Windows puede mostrar un aviso de editor desconocido. Comprueba los archivos con
@@ -42,8 +51,8 @@ interrumpir; solo se liberan salidas que realmente llegaron a pulsarse.
 
 **Ctrl+Alt+F12** detiene las macros, pausa asignaciones y desconecta/restaura el
 control directo. F9 ya se puede utilizar como acción o activador.
-**Prueba única en 3 s** reproduce un pase finito; para comprobar el modo mientras
-se mantiene pulsado se debe usar el activador físico asignado.
+Para comprobar el modo mientras se mantiene pulsado se debe usar el activador
+físico asignado.
 
 ## G502 HERO: botones físicos G1–G11
 
@@ -308,7 +317,7 @@ Retardos separados entre acciones y tabla Pulsar / Retardo / Soltar; selección 
 
 Edición de acciones de texto con doble clic o clic derecho → Editar, conservando su retardo. Las macros nuevas empiezan en rojo; su color individual aparece en sus nombres. Las vistas laterales de los mouse se muestran verticales con sus objetivos ajustados.
 
-## Prueba local 0.2.26
+## Prueba local 0.2.28
 
 Nombres de macros blancos por defecto, con color externo solo cuando se personaliza dentro de esa macro. Mouse centrado sobre el texto y los botones Vista 1 / Vista 2, conservando la separación vertical.
 

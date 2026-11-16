@@ -256,6 +256,55 @@ class Device:
         return asdict(self)
 
 
+_receiver_mouse_activity = set()
+_pending_receiver_mouse_handles = {}
+
+
+def confirm_receiver_mouse(handle):
+    identity = _pending_receiver_mouse_handles.pop(int(handle), None)
+    if identity is None:
+        return False
+    _receiver_mouse_activity.add(identity)
+    return True
+
+
+def separate_input_collections(collections, identities):
+    """Keep receiver keyboard collections distinct from its mouse capability."""
+    result = []
+    pending = {}
+    by_container = {}
+    for (identity, kind), device in collections.items():
+        by_container.setdefault(identity, {})[kind] = device
+    for identity, roles in by_container.items():
+        mouse, keyboard = roles.get('mouse'), roles.get('keyboard')
+        known_mouse = mouse and ((mouse.vid, mouse.pid) in {('046D','C08B'), ('30FA','0400')} or
+                                isinstance(identities.get(identity), dict) and identities[identity].get('kind') == 'mouse')
+        if mouse and keyboard and known_mouse:
+            mouse.paths.extend(keyboard.paths)
+            mouse.handles.extend(keyboard.handles)
+            result.append(mouse)
+            continue
+        if mouse and keyboard:
+            keyboard.id = hashlib.sha256((identity + '|keyboard').encode()).hexdigest()[:24]
+            if 'mouse' in keyboard.name.casefold() or 'ratón' in keyboard.name.casefold():
+                keyboard.name = f'Teclado USB · {keyboard.vid}:{keyboard.pid}'
+            record = identities.get(keyboard.id, {})
+            if not isinstance(record, dict):
+                record = {}
+            if (record.get('receiver_keyboard_only') is True and
+                    (record.get('vid'),record.get('pid'),record.get('kind')) == (keyboard.vid,keyboard.pid,'keyboard') and
+                    identity not in _receiver_mouse_activity):
+                pending.update({handle:identity for handle in mouse.handles})
+                result.append(keyboard)
+                continue
+        result.extend(roles.values())
+    live = set(by_container)
+    _receiver_mouse_activity.intersection_update(live)
+    _pending_receiver_mouse_handles.clear()
+    _pending_receiver_mouse_handles.update(pending)
+    return result
+
+
 def enumerate_devices(include_virtual=False) -> list[Device]:
     from .device_identity import load_identities, resolve_identities
     # Retry the documented enumeration race when a device arrives during the call.
@@ -272,7 +321,7 @@ def enumerate_devices(include_virtual=False) -> list[Device]:
             raise C.WinError(C.get_last_error())
     else:
         raise OSError("Los dispositivos cambian continuamente. Vuelve a actualizar.")
-    devices: dict[str, Device] = {}
+    devices: dict[tuple[str, str], Device] = {}
     identities = load_identities()
     for item in array[:result]:
         if item.kind not in (0, 1):
@@ -300,22 +349,22 @@ def enumerate_devices(include_virtual=False) -> list[Device]:
             maker = "KNUP"
         # Container ID groups composite collections without merging identical units.
         identity = hashlib.sha256(container_id(path).upper().encode()).hexdigest()[:24]
-        if identity not in devices:
-            devices[identity] = Device(identity, name, kind, maker or brand, vid, pid, [path], [int(item.handle)], virtual)
+        collection = (identity, kind)
+        if collection not in devices:
+            devices[collection] = Device(identity, name, kind, maker or brand, vid, pid, [path], [int(item.handle)], virtual)
         else:
-            device = devices[identity]
+            device = devices[collection]
             device.paths.append(path)
             device.handles.append(int(item.handle))
-            if kind == "mouse":
-                device.kind, device.name = kind, name
         if kind == 'mouse':
             count = mouse_button_count(item.handle)
-            previous = devices[identity].button_count
-            devices[identity].button_count = max(previous or 0, count or 0) or None
-    resolve_identities(list(devices.values()), identities)
+            previous = devices[collection].button_count
+            devices[collection].button_count = max(previous or 0, count or 0) or None
+    grouped = separate_input_collections(devices, identities)
+    resolve_identities(grouped, identities)
     from .device_catalog import apply_catalog
-    apply_catalog(list(devices.values()))
-    return sorted(devices.values(), key=lambda d: (d.kind != "mouse", d.name.casefold(), d.id))
+    apply_catalog(grouped)
+    return sorted(grouped, key=lambda d: (d.kind != "mouse", d.name.casefold(), d.id))
 
 
 def register_input(hwnd: int):
@@ -368,6 +417,8 @@ def read_input(lparam: int) -> tuple[int, list[dict]] | None:
         if mouse.extra == 0x4E584853:
             return None
         flags = mouse.button.split.flags
+        if (flags or mouse.x or mouse.y) and confirm_receiver_mouse(int(header.device or 0)):
+            events.append({'type':'device_activity'})
         if not flags:
             return int(header.device or 0), events
         for bit, button, down in ((1, "left", True), (2, "left", False), (4, "right", True), (8, "right", False),

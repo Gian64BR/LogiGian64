@@ -1,3 +1,25 @@
+# Verificacion local de LogiGian64 0.2.28
+
+Preparación de publicación del 15 de noviembre de 2026: se repitieron las 158
+pruebas de Windows y todas pasaron. La edición Linux se conserva por separado en
+`linux/`; su alcance y sus pruebas están documentados en `linux/VALIDATION.md`.
+Los cambios de esta publicación en Windows son los de teclados ya probados;
+la adaptación Linux no reemplaza el código de entrada ni el instalador Windows.
+
+- 158 pruebas automatizadas aprobadas, incluyendo separacion de interfaces, identidad estable, conservacion del G502, identificacion local sin contaminar otros receptores, aparicion del mouse por actividad y exclusión de esa señal del grabador.
+- Lectura real del receptor 1EA7:0066: anuncia teclado y raton con el mismo contenedor y el descriptor 2.4G Mouse. Se identifico el teclado confirmado por el usuario en su configuracion local, sin agregar una regla universal por VID/PID.
+- Capturas de Dispositivos y Configuracion revisadas a 1280 x 760. La foto del Havit se encuadra para mostrar solo el teclado; F1-F12 comprobadas a diferentes tamaños.
+- Otros modelos desconocidos conservan la imagen generica. Los archivos originales de las fotografias se incluyen sin modificar.
+- Compilacion local para revision; sin publicacion en GitHub.
+
+# Verificación local de LogiGian64 0.2.27
+
+- 152 pruebas automatizadas aprobadas.
+- Teclados desconocidos de distintas marcas/VID/PID usan la misma foto de referencia. Objetivos F1–F12 comprobados a 580, 1100 y 1500 píxeles de ancho, con los grupos y coordenadas dentro del teclado.
+- Capturas de Dispositivos y Configuración revisadas a 1280 × 760. Redragon K552RGB-1 conserva su foto específica.
+- El archivo suministrado se incluye sin modificaciones; el encuadre y fondo transparente se presentan en memoria y se reutilizan para no repetir el procesamiento.
+- Compilación local para revisión; sin publicación en GitHub.
+
 # Verificación local de LogiGian64 0.2.26
 
 - 151 pruebas automatizadas aprobadas.

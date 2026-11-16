@@ -10,3 +10,9 @@ def is_kumara(device):
     import re
     name = re.sub(r'[^a-z0-9]', '', device.name.casefold())
     return device.kind == 'keyboard' and ('redragon' in name or 'reddragon' in name) and 'k552rgb1' in name
+
+
+def is_havit_kb830wb(device):
+    import re
+    name = re.sub(r'[^a-z0-9]', '', device.name.casefold())
+    return device.kind == 'keyboard' and 'havit' in name and 'kb830wb' in name
